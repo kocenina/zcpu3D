@@ -11,15 +11,19 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe = b.addExecutable(.{
-        .name = "cpu_render",
+        .name = "zcpu3D",
         .root_module = exe_mod,
+        .use_llvm = true, // for debugging
     });
 
     // RGFW deps
     exe.linkSystemLibrary("X11");
     exe.linkSystemLibrary("Xrandr");
-    exe.addCSourceFile(.{
-        .file = b.path("thirdparty/RGFW/RGFW.c"),
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "thirdparty/RGFW/RGFW.c",
+            "thirdparty/olivec/olivec_impl.c",
+        },
     });
 
     exe.linkLibC();
