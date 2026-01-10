@@ -435,6 +435,7 @@ OLIVECDEF void olivec_sprite_blend(Olivec_Canvas oc, int x, int y, int w, int h,
 OLIVECDEF void olivec_sprite_copy(Olivec_Canvas oc, int x, int y, int w, int h, Olivec_Canvas sprite);
 OLIVECDEF void olivec_sprite_copy_bilinear(Olivec_Canvas oc, int x, int y, int w, int h, Olivec_Canvas sprite);
 OLIVECDEF uint32_t olivec_pixel_bilinear(Olivec_Canvas sprite, int nx, int ny, int w, int h);
+OLIVECDEF uint32_t olivec_mix_colors3(uint32_t c1, uint32_t c2, uint32_t c3, int u1, int u2, int det);
 
 typedef struct {
     // Safe ranges to iterate over.
@@ -709,7 +710,7 @@ OLIVECDEF uint32_t mix_colors2(uint32_t c1, uint32_t c2, int u1, int det)
     return 0;
 }
 
-OLIVECDEF uint32_t mix_colors3(uint32_t c1, uint32_t c2, uint32_t c3, int u1, int u2, int det)
+OLIVECDEF uint32_t olivec_mix_colors3(uint32_t c1, uint32_t c2, uint32_t c3, int u1, int u2, int det)
 {
     // TODO: estimate how much overflows are an issue in integer only environment
     int64_t r1 = OLIVEC_RED(c1);
@@ -790,7 +791,7 @@ OLIVECDEF void olivec_triangle3c(Olivec_Canvas oc, int x1, int y1, int x2, int y
             for (int x = lx; x <= hx; ++x) {
                 int u1, u2, det;
                 if (olivec_barycentric(x1, y1, x2, y2, x3, y3, x, y, &u1, &u2, &det)) {
-                    olivec_blend_color(&OLIVEC_PIXEL(oc, x, y), mix_colors3(c1, c2, c3, u1, u2, det));
+                    olivec_blend_color(&OLIVEC_PIXEL(oc, x, y), olivec_mix_colors3(c1, c2, c3, u1, u2, det));
                 }
             }
         }
