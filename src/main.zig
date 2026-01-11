@@ -1,12 +1,18 @@
 const std = @import("std");
 
+const core = @import("core.zig");
+const Point2 = core.Point2;
+const Point3 = core.Point3;
+
+const model = @import("model.zig");
+
 const c = @cImport({
     @cInclude("RGFW/RGFW.h");
     @cInclude("olivec/olive.c");
 });
 
 //2560x1440
-const HEIGHT = 1080 / 2;
+const HEIGHT = 1080 / 1;
 const WIDTH = HEIGHT;
 
 // RGFW_formatBGRA8
@@ -15,21 +21,6 @@ const Color = struct {
     g: u8,
     r: u8,
     a: u8 = 255,
-};
-
-const Point3 = struct {
-    x: f32 = 0,
-    y: f32 = 0,
-    z: f32 = 0,
-
-    fn init(x: f32, y: f32, z: f32) Point3 {
-        return .{ .x = x, .y = y, .z = z };
-    }
-};
-
-const Point2 = struct {
-    x: f32 = 0,
-    y: f32 = 0,
 };
 
 const RED = Color{ .r = 255, .g = 0, .b = 0 };
@@ -50,16 +41,24 @@ const cube = [_]Point3{
     Point3.init(-0.5, 0.5, 0.5),
 };
 
-const cube_indeces = [_]u32{ 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 4, 7, 7, 3, 0, 1, 5, 6, 6, 2, 1 };
+const cube_indeces = [_]u16{ 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 4, 7, 7, 3, 0, 1, 5, 6, 6, 2, 1 };
 
 pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .verbose_log = false }){};
+    defer {
+        const deinit_status = gpa.deinit();
+        if (deinit_status == .leak) std.log.err("GPA leaked", .{});
+    }
+
+    const allocator = gpa.allocator();
+
     const window = c.RGFW_createWindow("zcpu3D", 0, 0, WIDTH, HEIGHT, c.RGFW_windowCenter | c.RGFW_windowNoResize);
     defer c.RGFW_window_close(window);
 
     var buffer: [WIDTH][HEIGHT]Color = undefined;
     clear_buffer(@ptrCast(&buffer), WIDTH, HEIGHT, BACKGROUND);
     const olivec_canvas = c.olivec_canvas(@ptrCast(@alignCast(&buffer)), WIDTH, HEIGHT, WIDTH);
-    var zbuffer: [WIDTH][HEIGHT]f32 = std.mem.zeroes([WIDTH][HEIGHT]f32);
+    var zbuffer: [WIDTH * HEIGHT]f32 = std.mem.zeroes([WIDTH * HEIGHT]f32);
 
     // need to go with native format RGFW_formatBGRA8, otherwise RGFW_copyImageData64 will be making copy of buffer one by one pixel.
     const surface = c.RGFW_createSurface(@ptrCast(&buffer), WIDTH, HEIGHT, c.RGFW_formatBGRA8);
@@ -73,6 +72,9 @@ pub fn main() !void {
 
     var angle: f32 = 0;
 
+    var teapot = model.Model.load(allocator, "assets/teapot.obj");
+    defer teapot.deinit();
+
     var event: c.RGFW_event = undefined;
     while (c.RGFW_window_shouldClose(window) == c.RGFW_FALSE) {
         while (c.RGFW_window_checkEvent(window, &event) == c.RGFW_TRUE) {
@@ -83,7 +85,7 @@ pub fn main() !void {
         }
 
         clear_buffer(@ptrCast(&buffer), WIDTH, HEIGHT, BACKGROUND);
-        zbuffer = std.mem.zeroes([WIDTH][HEIGHT]f32);
+        zbuffer = std.mem.zeroes([WIDTH * HEIGHT]f32);
 
         const cur_time = std.time.microTimestamp();
         const dt = cur_time - old_time;
@@ -91,61 +93,8 @@ pub fn main() !void {
         old_time = cur_time;
         angle += 0.5 * std.math.pi * usable_dt;
 
-        for (cube) |vertex| {
-            // vertex.z += 1;
-            var point3 = rotate_y(vertex, angle);
-            point3 = translate_z(point3, 5);
-
-            var point2 = point_3_2(point3);
-            point2 = point_to_screen(point2);
-            draw_point(@ptrCast(&buffer), point2);
-        }
-
-        for (0..cube_indeces.len / 3) |ind| {
-            const v1 = translate_z(rotate_y(cube[cube_indeces[ind * 3]], angle), 5);
-            const v2 = translate_z(rotate_y(cube[cube_indeces[ind * 3 + 1]], angle), 5);
-            const v3 = translate_z(rotate_y(cube[cube_indeces[ind * 3 + 2]], angle), 5);
-
-            const p1 = point_to_screen(point_3_2(v1));
-            const p2 = point_to_screen(point_3_2(v2));
-            const p3 = point_to_screen(point_3_2(v3));
-
-            // c.olivec_line(olivec_canvas, @intFromFloat(p1.x), @intFromFloat(p1.y), @intFromFloat(p2.x), @intFromFloat(p2.y), 0xFF00FF00);
-            // c.olivec_line(olivec_canvas, @intFromFloat(p2.x), @intFromFloat(p2.y), @intFromFloat(p3.x), @intFromFloat(p3.y), 0xFF00FF00);
-            // c.olivec_line(olivec_canvas, @intFromFloat(p3.x), @intFromFloat(p3.y), @intFromFloat(p1.x), @intFromFloat(p1.y), 0xFF00FF00);
-
-            const x1: i32 = @intFromFloat(p1.x);
-            const x2: i32 = @intFromFloat(p2.x);
-            const x3: i32 = @intFromFloat(p3.x);
-            const y1: i32 = @intFromFloat(p1.y);
-            const y2: i32 = @intFromFloat(p2.y);
-            const y3: i32 = @intFromFloat(p3.y);
-            var lx: i32 = 0;
-            var hx: i32 = 0;
-            var ly: i32 = 0;
-            var hy: i32 = 0;
-            if (c.olivec_normalize_triangle(olivec_canvas.width, olivec_canvas.height, x1, y1, x2, y2, x3, y3, &lx, &hx, &ly, &hy)) {
-                for (@intCast(ly)..@intCast(hy + 1)) |y| {
-                    for (@intCast(lx)..@intCast(hx + 1)) |x| {
-                        var bu1: i32 = 0;
-                        var bu2: i32 = 0;
-                        var bdet: i32 = 0;
-                        if (c.olivec_barycentric(x1, y1, x2, y2, x3, y3, @intCast(x), @intCast(y), &bu1, &bu2, &bdet)) {
-                            const bu3: i32 = bdet - bu1 - bu2;
-                            const f1: f32 = @as(f32, @floatFromInt(bu1)) / @as(f32, @floatFromInt(bdet));
-                            const f2: f32 = @as(f32, @floatFromInt(bu2)) / @as(f32, @floatFromInt(bdet));
-                            const f3: f32 = @as(f32, @floatFromInt(bu3)) / @as(f32, @floatFromInt(bdet));
-
-                            const z: f32 = 1 / v1.z * f1 + 1 / v2.z * f2 + 1 / v3.z * f3;
-                            if (z > zbuffer[x][y]) {
-                                zbuffer[x][y] = z;
-                                olivec_canvas.pixels[x + y * WIDTH] = c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, bu1, bu2, bdet);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // draw_object(olivec_canvas, &zbuffer, &cube, &cube_indeces, angle, false);
+        draw_object(olivec_canvas, &zbuffer, teapot.vertices, teapot.faces, angle, true);
 
         check_fps(olivec_canvas, refresh_rate);
         time_diff += dt;
@@ -158,11 +107,64 @@ pub fn main() !void {
         }
 
         c.RGFW_window_blitSurface(window, surface);
+
+        // slow down
+        std.Thread.sleep(15_000_000);
+    }
+}
+
+fn draw_object(oc: c.Olivec_Canvas, zbuffer: []f32, vertices: []const Point3, indices: []const u16, angle_y: f32, wireframe_on: bool) void {
+    for (0..indices.len / 3) |ind| {
+        const v1 = translate_z(rotate_y(vertices[indices[ind * 3]], angle_y), 5);
+        const v2 = translate_z(rotate_y(vertices[indices[ind * 3 + 1]], angle_y), 5);
+        const v3 = translate_z(rotate_y(vertices[indices[ind * 3 + 2]], angle_y), 5);
+
+        const p1 = point_to_screen(point_3_2(v1));
+        const p2 = point_to_screen(point_3_2(v2));
+        const p3 = point_to_screen(point_3_2(v3));
+
+        if (wireframe_on) {
+            c.olivec_line(oc, @intFromFloat(p1.x), @intFromFloat(p1.y), @intFromFloat(p2.x), @intFromFloat(p2.y), 0xFF00FF00);
+            c.olivec_line(oc, @intFromFloat(p2.x), @intFromFloat(p2.y), @intFromFloat(p3.x), @intFromFloat(p3.y), 0xFF00FF00);
+            c.olivec_line(oc, @intFromFloat(p3.x), @intFromFloat(p3.y), @intFromFloat(p1.x), @intFromFloat(p1.y), 0xFF00FF00);
+        } else {
+            const x1: i32 = @intFromFloat(p1.x);
+            const x2: i32 = @intFromFloat(p2.x);
+            const x3: i32 = @intFromFloat(p3.x);
+            const y1: i32 = @intFromFloat(p1.y);
+            const y2: i32 = @intFromFloat(p2.y);
+            const y3: i32 = @intFromFloat(p3.y);
+            var lx: i32 = 0;
+            var hx: i32 = 0;
+            var ly: i32 = 0;
+            var hy: i32 = 0;
+            if (c.olivec_normalize_triangle(oc.width, oc.height, x1, y1, x2, y2, x3, y3, &lx, &hx, &ly, &hy)) {
+                for (@intCast(ly)..@intCast(hy + 1)) |y| {
+                    for (@intCast(lx)..@intCast(hx + 1)) |x| {
+                        var bu1: i32 = 0;
+                        var bu2: i32 = 0;
+                        var bdet: i32 = 0;
+                        if (c.olivec_barycentric(x1, y1, x2, y2, x3, y3, @intCast(x), @intCast(y), &bu1, &bu2, &bdet)) {
+                            const bu3: i32 = bdet - bu1 - bu2;
+                            const f1: f32 = @as(f32, @floatFromInt(bu1)) / @as(f32, @floatFromInt(bdet));
+                            const f2: f32 = @as(f32, @floatFromInt(bu2)) / @as(f32, @floatFromInt(bdet));
+                            const f3: f32 = @as(f32, @floatFromInt(bu3)) / @as(f32, @floatFromInt(bdet));
+
+                            const z: f32 = 1 / v1.z * f1 + 1 / v2.z * f2 + 1 / v3.z * f3;
+                            if (z > zbuffer[x + y * WIDTH]) {
+                                zbuffer[x + y * WIDTH] = z;
+                                oc.pixels[x + y * WIDTH] = c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, bu1, bu2, bdet);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 fn translate_z(p: Point3, dz: f32) Point3 {
-    return Point3.init(p.x, p.y - 1, p.z + dz);
+    return Point3.init(p.x, p.y - 2, p.z + dz);
 }
 
 fn rotate_y(point: Point3, angle: f32) Point3 {
@@ -180,13 +182,10 @@ fn point_to_screen(point: Point2) Point2 {
 fn point_3_2(point: Point3) Point2 {
     return .{ .x = point.x / point.z, .y = point.y / point.z };
 }
-// fn point_to_screen2(point: Point3) Point2 {
-//     return .{ .x = @divTrunc(point.x, point.z), .y = @divTrunc(point.y, point.z) };
-// }
 
 fn check_fps(oc: c.Olivec_Canvas, refresh_rate: f32) void {
     var buffer = [_]u8{0} ** 64;
-    const title = std.fmt.bufPrint(&buffer, "ms: {d:.2}, fps: {d:.2}", .{ refresh_rate, 1000 / @max(refresh_rate, 1) }) catch @panic("smol buffer");
+    const title = std.fmt.bufPrint(&buffer, "ms: {d:.2}, fps: {d:.2}", .{ refresh_rate, 1000 / @max(refresh_rate, 0.01) }) catch @panic("smol buffer");
 
     c.olivec_text(oc, title.ptr, 10, 10, c.olivec_default_font, 4, 0xFFFFFFFF);
 }
