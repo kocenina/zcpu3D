@@ -12,7 +12,7 @@ const c = @cImport({
 });
 
 //2560x1440
-const HEIGHT = 1080 / 1;
+const HEIGHT = 1080 / 2;
 const WIDTH = HEIGHT;
 
 // RGFW_formatBGRA8
@@ -42,6 +42,7 @@ const cube = [_]Point3{
 };
 
 const cube_indeces = [_]u16{ 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 4, 7, 7, 3, 0, 1, 5, 6, 6, 2, 1 };
+// const cube_indeces = [_]u16{ 0, 1, 2 };
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .verbose_log = false }){};
@@ -91,10 +92,12 @@ pub fn main() !void {
         const dt = cur_time - old_time;
         const usable_dt = @as(f32, @floatFromInt(dt)) / 1_000_000;
         old_time = cur_time;
-        angle += 0.5 * std.math.pi * usable_dt;
+        angle += 0.5 * usable_dt; //* std.math.pi;
 
         // draw_object(olivec_canvas, &zbuffer, &cube, &cube_indeces, angle, false);
-        draw_object(olivec_canvas, &zbuffer, teapot.vertices, teapot.faces, angle, true);
+        draw_object(olivec_canvas, &zbuffer, teapot.vertices, teapot.faces, angle, false);
+        if (false)
+            break;
 
         check_fps(olivec_canvas, refresh_rate);
         time_diff += dt;
@@ -109,19 +112,38 @@ pub fn main() !void {
         c.RGFW_window_blitSurface(window, surface);
 
         // slow down
-        std.Thread.sleep(15_000_000);
+        // std.Thread.sleep(15_000_000);
     }
 }
 
 fn draw_object(oc: c.Olivec_Canvas, zbuffer: []f32, vertices: []const Point3, indices: []const u16, angle_y: f32, wireframe_on: bool) void {
-    for (0..indices.len / 3) |ind| {
-        const v1 = translate_z(rotate_y(vertices[indices[ind * 3]], angle_y), 5);
-        const v2 = translate_z(rotate_y(vertices[indices[ind * 3 + 1]], angle_y), 5);
-        const v3 = translate_z(rotate_y(vertices[indices[ind * 3 + 2]], angle_y), 5);
+    var mat = core.identity_mat();
+    // mat[2][3] = 5 + angle_y;
+    mat[1][3] = 5 + angle_y;
+    // mat[3][1] = -20;
+    // _ = angle_y;
 
-        const p1 = point_to_screen(point_3_2(v1));
-        const p2 = point_to_screen(point_3_2(v2));
-        const p3 = point_to_screen(point_3_2(v3));
+    const xx = 0;
+    const yy = -1;
+    const zz = 5;
+    // const transform = core.translation_matrix(xx, yy, zz);
+    var transform = core.rotation_y(angle_y);
+    transform[0][3] = xx;
+    transform[1][3] = yy;
+    transform[2][3] = zz;
+
+    for (0..indices.len / 3) |ind| {
+        const v1 = vertices[indices[ind * 3]];
+        const v2 = vertices[indices[ind * 3 + 1]];
+        const v3 = vertices[indices[ind * 3 + 2]];
+
+        const vv1 = core.transform_position(transform, v1);
+        const vv2 = core.transform_position(transform, v2);
+        const vv3 = core.transform_position(transform, v3);
+
+        const p1 = point_to_screen(point_3_2(vv1));
+        const p2 = point_to_screen(point_3_2(vv2));
+        const p3 = point_to_screen(point_3_2(vv3));
 
         if (wireframe_on) {
             c.olivec_line(oc, @intFromFloat(p1.x), @intFromFloat(p1.y), @intFromFloat(p2.x), @intFromFloat(p2.y), 0xFF00FF00);
@@ -150,7 +172,7 @@ fn draw_object(oc: c.Olivec_Canvas, zbuffer: []f32, vertices: []const Point3, in
                             const f2: f32 = @as(f32, @floatFromInt(bu2)) / @as(f32, @floatFromInt(bdet));
                             const f3: f32 = @as(f32, @floatFromInt(bu3)) / @as(f32, @floatFromInt(bdet));
 
-                            const z: f32 = 1 / v1.z * f1 + 1 / v2.z * f2 + 1 / v3.z * f3;
+                            const z: f32 = 1 / vv1.z * f1 + 1 / vv2.z * f2 + 1 / vv3.z * f3;
                             if (z > zbuffer[x + y * WIDTH]) {
                                 zbuffer[x + y * WIDTH] = z;
                                 oc.pixels[x + y * WIDTH] = c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, bu1, bu2, bdet);
@@ -180,7 +202,8 @@ fn point_to_screen(point: Point2) Point2 {
 }
 
 fn point_3_2(point: Point3) Point2 {
-    return .{ .x = point.x / point.z, .y = point.y / point.z };
+    const z: f32 = if (point.z != 0) point.z else 10000000.0;
+    return .{ .x = point.x / z, .y = point.y / z };
 }
 
 fn check_fps(oc: c.Olivec_Canvas, refresh_rate: f32) void {
