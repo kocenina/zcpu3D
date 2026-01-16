@@ -2,6 +2,10 @@ const core = @import("core.zig");
 const Vec4 = core.Vec4;
 const Mat4 = core.Mat4;
 
+const math = @import("math.zig");
+
+const c = @import("cimport.zig").c;
+
 pub const Camera = struct {
     yaw: f32 = 0.0,
     pitch: f32 = 0.0,
@@ -12,81 +16,68 @@ pub const Camera = struct {
     up: core.Vec4 = .{ 0, 0, 0, 0 },
     world_up: core.Vec4 = .{ 0, 1, 0, 0 },
 
-    // mat4x4 lookAt(vec3  const & eye, vec3  const & center, vec3  const & up)
-    // {
-    //     vec3  f = normalize(center - eye);
-    //     vec3  u = normalize(up);
-    //     vec3  s = normalize(cross(f, u));
-    //     u = cross(s, f);
+    const CAMERA_MOVE_SPEED: comptime_float = 10;
+    const CAMERA_MOVE_SPEED_SPRINT: comptime_float = CAMERA_MOVE_SPEED * 10;
+    const MOUSE_SENSITIVITY: comptime_float = 0.5;
 
-    //     mat4x4 Result(1);
-    //     Result[0][0] = s.x;
-    //     Result[1][0] = s.y;
-    //     Result[2][0] = s.z;
-    //     Result[0][1] = u.x;
-    //     Result[1][1] = u.y;
-    //     Result[2][1] = u.z;
-    //     Result[0][2] =-f.x;
-    //     Result[1][2] =-f.y;
-    //     Result[2][2] =-f.z;
-    //     Result[3][0] =-dot(s, eye);
-    //     Result[3][1] =-dot(u, eye);
-    //     Result[3][2] = dot(f, eye);
-    //     return Result;
-    // }
+    pub fn init() Camera {
+        return .{};
+    }
 
-    pub fn rotation(_: *Camera) void {
-        // const input = self.scene.input;
-        // // exit
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_ESCAPE)) {
-        //     self.scene.exit();
-        // }
+    pub fn update(self: *Camera, window: *c.RGFW_window, dt: f32) void {
+        self.movement(window, dt);
+        self.refresh_vectors();
+    }
+    pub fn movement(self: *Camera, window: *c.RGFW_window, dt: f32) void {
+        var x: f32 = 0.0;
+        var y: f32 = 0.0;
+        var z: f32 = 0.0;
 
-        // const per_camera = &self.camera.perspective_camera;
+        if (c.RGFW_window_isKeyDown(window, c.RGFW_a) == c.RGFW_TRUE) {
+            x -= 1.0;
+        }
+        if (c.RGFW_window_isKeyDown(window, c.RGFW_d) == c.RGFW_TRUE) {
+            x += 1.0;
+        }
 
-        // var x: f32 = 0.0;
-        // var y: f32 = 0.0;
-        // var z: f32 = 0.0;
+        if (c.RGFW_window_isKeyDown(window, c.RGFW_controlL) == c.RGFW_TRUE) {
+            y -= 1.0;
+        }
+        if (c.RGFW_window_isKeyDown(window, c.RGFW_space) == c.RGFW_TRUE) {
+            y += 1.0;
+        }
 
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_A)) {
-        //     x -= 1.0;
-        // }
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_D)) {
-        //     x += 1.0;
-        // }
+        // Should be opposite, something not right with lookat matrix I think.
+        if (c.RGFW_window_isKeyDown(window, c.RGFW_w) == c.RGFW_TRUE) {
+            z -= 1.0;
+        }
+        if (c.RGFW_window_isKeyDown(window, c.RGFW_s) == c.RGFW_TRUE) {
+            z += 1.0;
+        }
 
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_LEFT_CONTROL)) {
-        //     y -= 1.0;
-        // }
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_SPACE)) {
-        //     y += 1.0;
-        // }
+        var cam_speed: f32 = CAMERA_MOVE_SPEED;
+        if (c.RGFW_window_isKeyDown(window, c.RGFW_shiftL) == c.RGFW_TRUE) {
+            cam_speed = CAMERA_MOVE_SPEED_SPRINT;
+        }
 
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_W)) {
-        //     z += 1.0;
-        // }
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_S)) {
-        //     z -= 1.0;
-        // }
+        const xvec: Vec4 = @splat(x);
+        const zvec: Vec4 = @splat(z);
+        const csvec: Vec4 = @splat(cam_speed);
+        const dtvec: Vec4 = @splat(dt);
+        var result = (self.right * xvec) + (self.front * zvec);
+        if (x != 0 and z != 0)
+            result = math.normalize3(result);
 
-        // var cam_speed: f32 = CAMERA_MOVE_SPEED;
-        // if (input.is_key_pressed(sersan.inputs.c.GLFW_KEY_LEFT_SHIFT)) {
-        //     cam_speed = CAMERA_MOVE_SPEED_SPRINT;
-        // }
+        result = result * csvec * dtvec;
+        self.position += result;
+        self.position[1] += y * cam_speed * dt;
 
-        // var result = (per_camera.camera_context.right * sersan.zmath.f32x4s(x)) + (per_camera.camera_context.front * sersan.zmath.f32x4s(z));
-        // if (x != 0 and z != 0)
-        //     result = sersan.zmath.normalize4(result);
+        var mouse_x: f32 = 0;
+        var mouse_y: f32 = 0;
+        c.RGFW_getMouseVector(&mouse_x, &mouse_y);
 
-        // result = result * sersan.zmath.f32x4s(cam_speed) * sersan.zmath.f32x4s(delta_time);
-        // per_camera.camera_context.position += result;
-        // per_camera.camera_context.position[1] += y * cam_speed * delta_time;
-
-        // const yaw: f32 = @floatCast(input.delta_mouse_x);
-        // per_camera.camera_context.yaw -= yaw / 10;
-
-        // const pitch: f32 = @floatCast(input.delta_mouse_y);
-        // per_camera.camera_context.pitch -= pitch / 10;
+        self.yaw += mouse_x * dt * MOUSE_SENSITIVITY;
+        self.pitch -= mouse_y * dt * MOUSE_SENSITIVITY;
     }
 
     pub fn refresh_vectors(self: *Camera) void {
@@ -94,9 +85,9 @@ pub const Camera = struct {
         self.front[0] = @sin((self.yaw)) * @cos((self.pitch)); //  sin(glm::radians(GetYaw())) * cos(glm::radians(GetPitch()));
         self.front[1] = @sin((self.pitch)); //sin(glm::radians(GetPitch()));
         self.front[2] = @cos((self.yaw)) * @cos((self.pitch)); // cos(glm::radians(GetYaw())) * cos(glm::radians(GetPitch()));
-        self.front = core.normalize3(self.front);
+        self.front = math.normalize3(self.front);
 
-        self.right = core.normalize3(core.cross3(self.front, self.world_up));
-        self.up = core.normalize3(core.cross3(self.right, self.front));
+        self.right = math.normalize3(math.cross3(self.front, self.world_up));
+        self.up = math.normalize3(math.cross3(self.right, self.front));
     }
 };
