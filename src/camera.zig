@@ -6,6 +6,8 @@ const math = @import("math.zig");
 
 const c = @import("cimport.zig").c;
 
+const std = @import("std");
+
 pub const Camera = struct {
     yaw: f32 = 0.0,
     pitch: f32 = 0.0,
@@ -34,10 +36,10 @@ pub const Camera = struct {
         var z: f32 = 0.0;
 
         if (c.RGFW_window_isKeyDown(window, c.RGFW_a) == c.RGFW_TRUE) {
-            x -= 1.0;
+            x += 1.0;
         }
         if (c.RGFW_window_isKeyDown(window, c.RGFW_d) == c.RGFW_TRUE) {
-            x += 1.0;
+            x -= 1.0;
         }
 
         if (c.RGFW_window_isKeyDown(window, c.RGFW_controlL) == c.RGFW_TRUE) {
@@ -47,12 +49,11 @@ pub const Camera = struct {
             y += 1.0;
         }
 
-        // Should be opposite, something not right with lookat matrix I think.
         if (c.RGFW_window_isKeyDown(window, c.RGFW_w) == c.RGFW_TRUE) {
-            z -= 1.0;
+            z += 1.0;
         }
         if (c.RGFW_window_isKeyDown(window, c.RGFW_s) == c.RGFW_TRUE) {
-            z += 1.0;
+            z -= 1.0;
         }
 
         var cam_speed: f32 = CAMERA_MOVE_SPEED;
@@ -78,6 +79,8 @@ pub const Camera = struct {
 
         self.yaw += mouse_x * dt * MOUSE_SENSITIVITY;
         self.pitch -= mouse_y * dt * MOUSE_SENSITIVITY;
+
+        self.pitch = std.math.clamp(self.pitch, -(std.math.pi / 2.0) + 0.01, std.math.pi / 2.0 - 0.01);
     }
 
     pub fn refresh_vectors(self: *Camera) void {

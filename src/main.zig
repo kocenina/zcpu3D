@@ -83,14 +83,17 @@ pub fn main() !void {
 
     var camera = Camera.init();
     camera.position[0] = 0;
-    camera.position[1] = 0;
-    camera.position[2] = 0;
-    camera.yaw = std.math.pi;
+    camera.position[1] = 1;
+    camera.position[2] = -2;
+    camera.yaw = 0;
 
-    const perspective = math.perspective_matrix(90, @as(f32, @floatFromInt(WIDTH)) / @as(f32, @floatFromInt(HEIGHT)), 0.1, 500);
+    const perspective = math.perspective_matrix(70, @as(f32, @floatFromInt(WIDTH)) / @as(f32, @floatFromInt(HEIGHT)), 0.1, 500);
     const transform = core.translation_matrix(0, 0, 5);
 
     var mvp = MVP{ .projection = perspective, .model = transform };
+
+    camera.update(window.?, 0);
+    mvp.view = math.look_at(camera.position, camera.front, camera.up);
 
     var event: c.RGFW_event = undefined;
     while (c.RGFW_window_shouldClose(window) == c.RGFW_FALSE) {
@@ -113,7 +116,7 @@ pub fn main() !void {
         camera.update(window.?, usable_dt);
         mvp.view = math.look_at(camera.position, camera.front, camera.up);
 
-        draw_object(olivec_canvas, &mvp, &zbuffer, &cube, &cube_indeces, false);
+        // draw_object(olivec_canvas, &mvp, &zbuffer, &cube, &cube_indeces, false);
         draw_object(olivec_canvas, &mvp, &zbuffer, teapot.vertices, teapot.faces, false);
         if (false)
             break;
@@ -135,15 +138,17 @@ pub fn main() !void {
     }
 }
 
+fn printm(m: core.Mat4) void {
+    std.debug.print("{any}\n", .{m});
+}
+
 fn draw_object(oc: c.Olivec_Canvas, mvp: *MVP, zbuffer: []f32, vertices: []const Point3, indices: []const u16, wireframe_on: bool) void {
     for (0..indices.len / 3) |ind| {
         const v1 = vertices[indices[ind * 3]];
         const v2 = vertices[indices[ind * 3 + 1]];
         const v3 = vertices[indices[ind * 3 + 2]];
 
-        // const vp = math.mul_mat_mul(mvp.view, mvp.projection);
-        const vp = mvp.view;
-        // const vp = cm;
+        const vp = math.mul_mat_mul(mvp.view, mvp.projection);
         const mvp_calc = math.mul_mat_mul(mvp.model, vp);
 
         const vv1 = math.transform_position(v1, mvp_calc);
