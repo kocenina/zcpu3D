@@ -1,8 +1,6 @@
-const core = @import("core.zig");
-const Vec4 = core.Vec4;
-const Mat4 = core.Mat4;
-
 const math = @import("math.zig");
+const Vec4 = math.Vec4;
+const Mat4 = math.Mat4;
 
 const c = @import("cimport.zig").c;
 
@@ -13,10 +11,10 @@ pub const Camera = struct {
     pitch: f32 = 0.0,
     position: Vec4 = .{ 0, 0, 0, 0 },
 
-    front: core.Vec4 = .{ 0, 0, 0, 0 },
-    right: core.Vec4 = .{ 0, 0, 0, 0 },
-    up: core.Vec4 = .{ 0, 0, 0, 0 },
-    world_up: core.Vec4 = .{ 0, 1, 0, 0 },
+    front: Vec4 = .{ 0, 0, 0, 0 },
+    right: Vec4 = .{ 0, 0, 0, 0 },
+    up: Vec4 = .{ 0, 0, 0, 0 },
+    world_up: Vec4 = .{ 0, 1, 0, 0 },
 
     const CAMERA_MOVE_SPEED: comptime_float = 10;
     const CAMERA_MOVE_SPEED_SPRINT: comptime_float = CAMERA_MOVE_SPEED * 10;

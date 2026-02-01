@@ -1,11 +1,13 @@
-const core = @import("core.zig");
+const math = @import("math.zig");
 
 const std = @import("std");
 
 const MAX_READ_BYTES_SIZE = 5_000_000; // random
 
+// Loading wawefront obj files.
+// Supporting just vertices and faces (v f).
 pub const Model = struct {
-    vertices: []core.Point3,
+    vertices: []math.Point3,
     faces: []u16,
     allocator: std.mem.Allocator,
 
@@ -20,20 +22,20 @@ pub const Model = struct {
 };
 
 fn load_model(allocator: std.mem.Allocator, path: []const u8) Model {
-    const file = std.fs.cwd().openFile(path, .{}) catch @panic("bb");
+    const file = std.fs.cwd().openFile(path, .{}) catch @panic("File does not exist");
     defer file.close();
 
     var buffer = [_]u8{0} ** 1024;
     var reader = file.reader(&buffer);
 
-    var vertices_array: std.ArrayList(core.Point3) = .{};
+    var vertices_array: std.ArrayList(math.Point3) = .{};
     defer vertices_array.deinit(allocator);
 
     var faces_array: std.ArrayList(u16) = .{};
     defer faces_array.deinit(allocator);
 
     while (true) {
-        const line = reader.interface.takeDelimiter('\n') catch @panic("aa");
+        const line = reader.interface.takeDelimiter('\n') catch @panic("Read failed");
         if (line == null) break;
 
         if (line.?.len <= 5) continue;
@@ -53,34 +55,47 @@ fn load_model(allocator: std.mem.Allocator, path: []const u8) Model {
     }
 
     // TODO Instead of copying, I could just free allocated capacity, that is not used in arraylist. Maybe later.
-    const vertices = allocator.alloc(core.Point3, vertices_array.items.len) catch @panic("OOM");
-    @memmove(vertices, vertices_array.items);
+    const vertices = allocator.alloc(math.Point3, vertices_array.items.len) catch @panic("OOM");
+    @memcpy(vertices, vertices_array.items);
 
     const faces = allocator.alloc(u16, faces_array.items.len) catch @panic("OOM");
-    @memmove(faces, faces_array.items);
+    @memcpy(faces, faces_array.items);
 
     return .{ .vertices = vertices, .faces = faces, .allocator = allocator };
 }
 
-fn parse_vertex(line: []u8) core.Point3 {
+fn parse_vertex(line: []u8) math.Point3 {
     var splits = std.mem.splitAny(u8, line, " ");
     _ = splits.first();
     const x = std.fmt.parseFloat(f32, splits.next() orelse "0.0") catch 0.0;
     const y = std.fmt.parseFloat(f32, splits.next() orelse "0.0") catch 0.0;
     const z = std.fmt.parseFloat(f32, splits.next() orelse "0.0") catch 0.0;
 
-    return core.Point3.init(x, y, z);
+    return math.Point3.init(x, y, z);
 }
 
 fn parse_faces(line: []u8) struct { u16, u16, u16 } {
+    // just triangle faces
     var splits = std.mem.splitAny(u8, line, " ");
-    _ = splits.first();
+    _ = splits.first(); // f
 
-    // TODO better parsing v1/vt1/vn1
-    const x = std.fmt.parseInt(u16, splits.next() orelse "1", 0) catch 1;
-    const y = std.fmt.parseInt(u16, splits.next() orelse "1", 0) catch 1;
-    const z = std.fmt.parseInt(u16, splits.next() orelse "1", 0) catch 1;
+    const first_item = splits.next() orelse "1";
+    const second_item = splits.next() orelse "1";
+    const third_item = splits.next() orelse "1";
+
+    const x = parse_face_item(first_item);
+    const y = parse_face_item(second_item);
+    const z = parse_face_item(third_item);
+
+    return .{ x, y, z };
+}
+
+fn parse_face_item(item: []const u8) u16 {
+    // v1/vt1/vn1
+    var splits = std.mem.splitAny(u8, item, "/");
+    const index = std.fmt.parseInt(u16, splits.first(), 0) catch 1;
+    // other stuff does not matter for me
 
     // index in obj files starts with 1
-    return .{ x - 1, y - 1, z - 1 };
+    return index - 1;
 }

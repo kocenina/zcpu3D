@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const core = @import("core.zig");
-const Point2 = core.Point2;
-const Point3 = core.Point3;
 const math = @import("math.zig");
+const Point2 = math.Point2;
+const Point3 = math.Point3;
+const Mat4 = math.Mat4;
 
 const model = @import("model.zig");
 const Camera = @import("camera.zig").Camera;
@@ -11,7 +11,7 @@ const Camera = @import("camera.zig").Camera;
 const c = @import("cimport.zig").c;
 
 //2560x1440
-const HEIGHT = 1080 / 2;
+const HEIGHT = 1080;
 const WIDTH = HEIGHT;
 
 // RGFW_formatBGRA8
@@ -28,25 +28,9 @@ const BLUE = Color{ .r = 0, .g = 0, .b = 255 };
 
 const BACKGROUND = Color{ .r = 0, .g = 0, .b = 0 };
 
-const cube = [_]Point3{
-    Point3.init(-0.5, -0.5, -0.5),
-    Point3.init(0.5, -0.5, -0.5),
-    Point3.init(0.5, 0.5, -0.5),
-    Point3.init(-0.5, 0.5, -0.5),
-
-    Point3.init(-0.5, -0.5, 0.5),
-    Point3.init(0.5, -0.5, 0.5),
-    Point3.init(0.5, 0.5, 0.5),
-    Point3.init(-0.5, 0.5, 0.5),
-};
-
-const cube_indeces = [_]u16{ 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 4, 7, 7, 3, 0, 1, 5, 6, 6, 2, 1 };
-// const cube_indeces = [_]u16{ 0, 1, 2 };
-
-const MVP = struct {
-    projection: core.Mat4,
-    view: core.Mat4 = undefined,
-    model: core.Mat4 = undefined,
+const VP = struct {
+    projection: Mat4,
+    view: Mat4 = undefined,
 };
 
 pub fn main() !void {
@@ -78,8 +62,11 @@ pub fn main() !void {
 
     var angle: f32 = 0;
 
-    var teapot = model.Model.load(allocator, "assets/teapot.obj");
-    defer teapot.deinit();
+    var teapot_mesh = model.Model.load(allocator, "assets/teapot.obj");
+    defer teapot_mesh.deinit();
+
+    var monkey_mesh = model.Model.load(allocator, "assets/monkey.obj");
+    defer monkey_mesh.deinit();
 
     var camera = Camera.init();
     camera.position[0] = 0;
@@ -88,12 +75,8 @@ pub fn main() !void {
     camera.yaw = 0;
 
     const perspective = math.perspective_matrix(70, @as(f32, @floatFromInt(WIDTH)) / @as(f32, @floatFromInt(HEIGHT)), 0.1, 500);
-    const transform = core.translation_matrix(0, 0, 5);
 
-    var mvp = MVP{ .projection = perspective, .model = transform };
-
-    camera.update(window.?, 0);
-    mvp.view = math.look_at(camera.position, camera.front, camera.up);
+    var vp = VP{ .projection = perspective };
 
     var event: c.RGFW_event = undefined;
     while (c.RGFW_window_shouldClose(window) == c.RGFW_FALSE) {
@@ -111,15 +94,25 @@ pub fn main() !void {
         const dt = cur_time - old_time;
         const usable_dt = @as(f32, @floatFromInt(dt)) / 1_000_000;
         old_time = cur_time;
-        angle += usable_dt; //* std.math.pi;
+        angle += usable_dt * std.math.pi / 2.0;
 
         camera.update(window.?, usable_dt);
-        mvp.view = math.look_at(camera.position, camera.front, camera.up);
+        vp.view = math.look_at(camera.position, camera.front, camera.up);
 
-        // draw_object(olivec_canvas, &mvp, &zbuffer, &cube, &cube_indeces, false);
-        draw_object(olivec_canvas, &mvp, &zbuffer, teapot.vertices, teapot.faces, false);
-        if (false)
-            break;
+        const view_proj = math.mul_mat_mul(vp.view, vp.projection);
+        const rotation = math.rotation_y(angle);
+
+        var transform = math.translation_matrix(0, 0, 5);
+        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false);
+
+        transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
+        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true);
+
+        transform = math.mul_mat_mul(math.translation_matrix(5, -1, 0), transform);
+        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false);
+
+        transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
+        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true);
 
         check_fps(olivec_canvas, refresh_rate);
         time_diff += dt;
@@ -134,22 +127,21 @@ pub fn main() !void {
         c.RGFW_window_blitSurface(window, surface);
 
         // slow down
-        std.Thread.sleep(15_000_000);
+        // std.Thread.sleep(15_000_000);
     }
 }
 
-fn printm(m: core.Mat4) void {
+fn printm(m: Mat4) void {
     std.debug.print("{any}\n", .{m});
 }
 
-fn draw_object(oc: c.Olivec_Canvas, mvp: *MVP, zbuffer: []f32, vertices: []const Point3, indices: []const u16, wireframe_on: bool) void {
-    for (0..indices.len / 3) |ind| {
-        const v1 = vertices[indices[ind * 3]];
-        const v2 = vertices[indices[ind * 3 + 1]];
-        const v3 = vertices[indices[ind * 3 + 2]];
+fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, view_projection: Mat4, zbuffer: []f32, wireframe_on: bool) void {
+    for (0..mesh.faces.len / 3) |ind| {
+        const v1 = mesh.vertices[mesh.faces[ind * 3]];
+        const v2 = mesh.vertices[mesh.faces[ind * 3 + 1]];
+        const v3 = mesh.vertices[mesh.faces[ind * 3 + 2]];
 
-        const vp = math.mul_mat_mul(mvp.view, mvp.projection);
-        const mvp_calc = math.mul_mat_mul(mvp.model, vp);
+        const mvp_calc = math.mul_mat_mul(transform, view_projection);
 
         const vv1 = math.transform_position(v1, mvp_calc);
         const vv2 = math.transform_position(v2, mvp_calc);
@@ -232,7 +224,7 @@ fn point_3_2(point: Point3) Point2 {
 
 fn check_fps(oc: c.Olivec_Canvas, refresh_rate: f32) void {
     var buffer = [_]u8{0} ** 64;
-    const title = std.fmt.bufPrint(&buffer, "ms: {d:.2}, fps: {d:.2}", .{ refresh_rate, 1000 / @max(refresh_rate, 0.01) }) catch @panic("smol buffer");
+    const title = std.fmt.bufPrint(&buffer, "{}x{} ms: {d:.2}, fps: {d:.2}", .{ WIDTH, HEIGHT, refresh_rate, 1000 / @max(refresh_rate, 0.01) }) catch @panic("smol buffer");
 
     c.olivec_text(oc, title.ptr, 10, 10, c.olivec_default_font, 4, 0xFFFFFFFF);
 }
