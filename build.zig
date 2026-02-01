@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "zcpu3D",
         .root_module = exe_mod,
-        .use_llvm = true, // for debugging
+        .use_llvm = true, // true for debugging
     });
 
     // RGFW deps
