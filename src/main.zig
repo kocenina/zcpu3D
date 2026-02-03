@@ -34,6 +34,12 @@ const BLUE = Color{ .r = 0, .g = 0, .b = 255 };
 
 const BACKGROUND = Color{ .r = 0, .g = 0, .b = 0 };
 
+const FaceCulling = enum {
+    NONE,
+    BACK,
+    FRONT,
+};
+
 const VP = struct {
     projection: Mat4,
     view: Mat4 = undefined,
@@ -108,16 +114,19 @@ pub fn main() !void {
         const rotation = math.rotation_y(angle);
 
         var transform = math.translation_matrix(0, 0, 5);
-        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, allocator);
+        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true, allocator);
+        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, -1, 0), transform);
-        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, allocator);
+        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true, allocator);
+        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, FaceCulling.FRONT, allocator);
+
+        transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
+        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true, FaceCulling.BACK, allocator);
 
         // for (0..100) |_| {
         //     transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
@@ -171,7 +180,7 @@ fn printm(m: Mat4) void {
     std.debug.print("{any}\n", .{m});
 }
 
-fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, view_projection: Mat4, zbuffer: []f32, wireframe_on: bool, allocator: std.mem.Allocator) void {
+fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, view_projection: Mat4, zbuffer: []f32, wireframe_on: bool, culling: FaceCulling, allocator: std.mem.Allocator) void {
     const mvp_calc = math.mul_mat_mul(transform, view_projection);
 
     const translated_verices = allocator.alloc(Point3, mesh.vertices.len) catch @panic("OOM");
@@ -192,16 +201,27 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
 
         // culling
         {
-            const vec1 = p1.to_vec();
-            const vec2 = p2.to_vec();
-            const vec3 = p3.to_vec();
+            if (culling != FaceCulling.NONE) {
+                const vec1 = p1.to_vec();
+                const vec2 = p2.to_vec();
+                const vec3 = p3.to_vec();
 
-            const first_vec = vec2 - vec1;
-            const second_vec = vec3 - vec1;
-            const cross = math.cross3(first_vec, second_vec);
+                const first_vec = vec2 - vec1;
+                const second_vec = vec3 - vec1;
+                const cross = math.cross3(first_vec, second_vec);
 
-            if (cross[2] < 0)
-                continue;
+                switch (culling) {
+                    FaceCulling.BACK => {
+                        if (cross[2] <= 0)
+                            continue;
+                    },
+                    FaceCulling.FRONT => {
+                        if (cross[2] >= 0)
+                            continue;
+                    },
+                    else => unreachable,
+                }
+            }
         }
 
         const max_offset = 100.0;
