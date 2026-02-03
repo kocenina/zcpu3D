@@ -3,6 +3,8 @@ const std = @import("std");
 const math = @import("math.zig");
 const Point2 = math.Point2;
 const Point3 = math.Point3;
+
+const Vec4 = math.Vec4;
 const Mat4 = math.Mat4;
 
 const model = @import("model.zig");
@@ -10,12 +12,13 @@ const Camera = @import("camera.zig").Camera;
 
 const c = @import("cimport.zig").c;
 
-// Rendering at 0.5 resolution scale
 const RENDER_HEIGHT = 1080 / 2;
 const RENDER_WIDTH = RENDER_HEIGHT;
 
-const TARGET_HEIGHT = RENDER_HEIGHT;
-const TARGET_WIDTH = RENDER_WIDTH;
+// Rendering at 0.5 resolution scale
+const ENABLE_SCALING = false;
+const TARGET_HEIGHT = if (ENABLE_SCALING) RENDER_HEIGHT * 2 else RENDER_HEIGHT;
+const TARGET_WIDTH = if (ENABLE_SCALING) RENDER_WIDTH * 2 else RENDER_WIDTH;
 
 // RGFW_formatBGRA8
 const Color = struct {
@@ -135,26 +138,32 @@ pub fn main() !void {
         c.RGFW_window_blitSurface(window, surface);
 
         // slow down
-        std.Thread.sleep(15_000_000);
+        // std.Thread.sleep(15_000_000);
     }
 }
 
 fn make_target_screen(render: *[RENDER_WIDTH][RENDER_HEIGHT]Color, target: *[TARGET_WIDTH][TARGET_HEIGHT]Color) void {
-    if (RENDER_WIDTH == TARGET_WIDTH and RENDER_HEIGHT == TARGET_HEIGHT) {
+    if (!ENABLE_SCALING) {
         @memcpy(target, render);
         return;
     }
-    if (RENDER_WIDTH * 2 != TARGET_WIDTH or RENDER_HEIGHT * 2 != TARGET_HEIGHT)
-        return;
 
     clear_buffer(@ptrCast(target), TARGET_WIDTH, TARGET_HEIGHT, BACKGROUND);
-    for (0..RENDER_WIDTH) |x| {
-        for (0..RENDER_HEIGHT) |y| {
-            target[x * 2][y * 2] = render[x][y];
-            target[x * 2][y * 2 + 1] = render[x][y];
-            target[x * 2 + 1][y * 2] = render[x][y];
-            target[x * 2 + 1][y * 2 + 1] = render[x][y];
+
+    // bottleneck
+    for (0..RENDER_HEIGHT) |y| {
+        const render_row = &render[y];
+        const target_row1 = &target[y * 2];
+        const target_row2 = &target[y * 2 + 1];
+
+        for (0..RENDER_WIDTH) |x| {
+            const color = render_row[x];
+
+            target_row1[x * 2] = color;
+            target_row1[x * 2 + 1] = color;
         }
+
+        @memcpy(target_row2, target_row1);
     }
 }
 
@@ -180,6 +189,20 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
         const p1 = point_to_screen(point_3_2(v1));
         const p2 = point_to_screen(point_3_2(v2));
         const p3 = point_to_screen(point_3_2(v3));
+
+        // culling
+        {
+            const vec1 = p1.to_vec();
+            const vec2 = p2.to_vec();
+            const vec3 = p3.to_vec();
+
+            const first_vec = vec2 - vec1;
+            const second_vec = vec3 - vec1;
+            const cross = math.cross3(first_vec, second_vec);
+
+            if (cross[2] < 0)
+                continue;
+        }
 
         const max_offset = 100.0;
         if (p1.x < -max_offset or p1.x > RENDER_WIDTH + max_offset or p1.y < -max_offset or p1.y > RENDER_HEIGHT + max_offset)
@@ -263,10 +286,7 @@ fn clear_buffer(buffer: [*]Color, width: i32, height: i32, color: Color) void {
     if (width == 0 or height == 0)
         return;
 
-    // memcpy maybe better???
-    for (0..@intCast(width * height)) |index| {
-        buffer[index] = color;
-    }
+    @memset(buffer[0..@intCast(width * height)], color);
 }
 
 fn draw_point(buffer: [*]Color, point: Point2) void {

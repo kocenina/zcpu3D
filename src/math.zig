@@ -1,6 +1,10 @@
 pub const Point2 = struct {
     x: f32 = 0,
     y: f32 = 0,
+
+    pub fn to_vec(self: *const Point2) Vec4 {
+        return .{ self.x, self.y, 0, 0 };
+    }
 };
 
 pub const Point3 = struct {
