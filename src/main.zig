@@ -4,6 +4,9 @@ const math = @import("math.zig");
 const Point2 = math.Point2;
 const Point3 = math.Point3;
 
+const iVec2 = math.iVec2;
+
+const Vec3 = math.Vec3;
 const Vec4 = math.Vec4;
 const Mat4 = math.Mat4;
 
@@ -12,7 +15,7 @@ const Camera = @import("camera.zig").Camera;
 
 const c = @import("cimport.zig").c;
 
-const RENDER_HEIGHT = 1080 / 2;
+const RENDER_HEIGHT = 1080 / 1;
 const RENDER_WIDTH = RENDER_HEIGHT;
 
 // Rendering at 0.5 resolution scale
@@ -147,7 +150,7 @@ pub fn main() !void {
         c.RGFW_window_blitSurface(window, surface);
 
         // slow down
-        // std.Thread.sleep(15_000_000);
+        std.Thread.sleep(15_000_000);
     }
 }
 
@@ -239,34 +242,48 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
             c.olivec_line(oc, @intFromFloat(p2.x), @intFromFloat(p2.y), @intFromFloat(p3.x), @intFromFloat(p3.y), 0xFF00FF00);
             c.olivec_line(oc, @intFromFloat(p3.x), @intFromFloat(p3.y), @intFromFloat(p1.x), @intFromFloat(p1.y), 0xFF00FF00);
         } else {
-            const x1: i32 = @intFromFloat(p1.x);
-            const x2: i32 = @intFromFloat(p2.x);
-            const x3: i32 = @intFromFloat(p3.x);
-            const y1: i32 = @intFromFloat(p1.y);
-            const y2: i32 = @intFromFloat(p2.y);
-            const y3: i32 = @intFromFloat(p3.y);
-            var lx: i32 = 0;
-            var hx: i32 = 0;
-            var ly: i32 = 0;
-            var hy: i32 = 0;
-            if (c.olivec_normalize_triangle(oc.width, oc.height, x1, y1, x2, y2, x3, y3, &lx, &hx, &ly, &hy)) {
-                for (@intCast(ly)..@intCast(hy + 1)) |y| {
-                    for (@intCast(lx)..@intCast(hx + 1)) |x| {
-                        var bu1: i32 = 0;
-                        var bu2: i32 = 0;
-                        var bdet: i32 = 0;
-                        if (c.olivec_barycentric(x1, y1, x2, y2, x3, y3, @intCast(x), @intCast(y), &bu1, &bu2, &bdet)) {
-                            const bu3: i32 = bdet - bu1 - bu2;
-                            const f1: f32 = @as(f32, @floatFromInt(bu1)) / @as(f32, @floatFromInt(bdet));
-                            const f2: f32 = @as(f32, @floatFromInt(bu2)) / @as(f32, @floatFromInt(bdet));
-                            const f3: f32 = @as(f32, @floatFromInt(bu3)) / @as(f32, @floatFromInt(bdet));
+            // const x1: i32 = @intFromFloat(p1.x);
+            // const x2: i32 = @intFromFloat(p2.x);
+            // const x3: i32 = @intFromFloat(p3.x);
+            // const y1: i32 = @intFromFloat(p1.y);
+            // const y2: i32 = @intFromFloat(p2.y);
+            // const y3: i32 = @intFromFloat(p3.y);
 
-                            const z: f32 = 1 / v1.z * f1 + 1 / v2.z * f2 + 1 / v3.z * f3;
-                            if (z > zbuffer[x + y * RENDER_WIDTH]) {
-                                zbuffer[x + y * RENDER_WIDTH] = z;
-                                oc.pixels[x + y * RENDER_WIDTH] = c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, bu1, bu2, bdet);
-                            }
-                        }
+            const ip1 = p1.to_ivec();
+            const ip2 = p2.to_ivec();
+            const ip3 = p3.to_ivec();
+
+            const bb = math.triangle_bb(ip1, ip2, ip3, @intCast(oc.width), @intCast(oc.height)) catch continue;
+            const lx: usize = @intCast(bb[0]);
+            const ly: usize = @intCast(bb[1]);
+            const hx: usize = @intCast(bb[2]);
+            const hy: usize = @intCast(bb[3]);
+            for (ly..(hy + 1)) |y| {
+                for (lx..(hx + 1)) |x| {
+                    // var bu1: i32 = 0;
+                    // var bu2: i32 = 0;
+                    // var bdet: i32 = 0;
+                    // if (c.olivec_barycentric(x1, y1, x2, y2, x3, y3, @intCast(x), @intCast(y), &bu1, &bu2, &bdet)) {
+                    //     const bu3: i32 = bdet - bu1 - bu2;
+                    //     const f1: f32 = @as(f32, @floatFromInt(bu1)) / @as(f32, @floatFromInt(bdet));
+                    //     const f2: f32 = @as(f32, @floatFromInt(bu2)) / @as(f32, @floatFromInt(bdet));
+                    //     const f3: f32 = @as(f32, @floatFromInt(bu3)) / @as(f32, @floatFromInt(bdet));
+
+                    //     const z: f32 = 1 / v1.z * f1 + 1 / v2.z * f2 + 1 / v3.z * f3;
+                    //     if (z > zbuffer[x + y * RENDER_WIDTH]) {
+                    //         zbuffer[x + y * RENDER_WIDTH] = z;
+                    //         oc.pixels[x + y * RENDER_WIDTH] = c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, bu1, bu2, bdet);
+                    //     }
+                    // }
+
+                    const res = math.point_in_triangle(iVec2{ @intCast(x), @intCast(y) }, ip1, ip2, ip3);
+                    if (!res[0])
+                        continue;
+                    oc.pixels[x + y * RENDER_WIDTH] = 0xFF1818FF;
+                    const z = math.dot3(res[1], Vec4{ v1.x, v2.z, v3.z, 0 });
+                    if (z > zbuffer[x + y * RENDER_WIDTH]) {
+                        zbuffer[x + y * RENDER_WIDTH] = z;
+                        oc.pixels[x + y * RENDER_WIDTH] = 0xFF1818FF; //c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, 1, 2, 3);
                     }
                 }
             }
