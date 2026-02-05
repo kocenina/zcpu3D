@@ -15,7 +15,7 @@ const Camera = @import("camera.zig").Camera;
 
 const c = @import("cimport.zig").c;
 
-const RENDER_HEIGHT = 1080 / 1;
+const RENDER_HEIGHT = 1080 / 2;
 const RENDER_WIDTH = RENDER_HEIGHT;
 
 // Rendering at 0.5 resolution scale
@@ -109,6 +109,7 @@ pub fn main() !void {
         const usable_dt = @as(f32, @floatFromInt(dt)) / 1_000_000;
         old_time = cur_time;
         angle += usable_dt * std.math.pi / 2.0;
+        angle = 0;
 
         camera.update(window.?, usable_dt);
         vp.view = math.look_at(camera.position, camera.front, camera.up);
@@ -150,7 +151,7 @@ pub fn main() !void {
         c.RGFW_window_blitSurface(window, surface);
 
         // slow down
-        std.Thread.sleep(15_000_000);
+        // std.Thread.sleep(15_000_000);
     }
 }
 
@@ -238,9 +239,12 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
             continue;
 
         if (wireframe_on) {
-            c.olivec_line(oc, @intFromFloat(p1.x), @intFromFloat(p1.y), @intFromFloat(p2.x), @intFromFloat(p2.y), 0xFF00FF00);
-            c.olivec_line(oc, @intFromFloat(p2.x), @intFromFloat(p2.y), @intFromFloat(p3.x), @intFromFloat(p3.y), 0xFF00FF00);
-            c.olivec_line(oc, @intFromFloat(p3.x), @intFromFloat(p3.y), @intFromFloat(p1.x), @intFromFloat(p1.y), 0xFF00FF00);
+            draw_line(oc, p1.to_ivec(), p2.to_ivec(), 0xFFFF0000);
+            draw_line(oc, p2.to_ivec(), p3.to_ivec(), 0xFFFF0000);
+            draw_line(oc, p3.to_ivec(), p1.to_ivec(), 0xFFFF0000);
+            // c.olivec_line(oc, @intFromFloat(p1.x), @intFromFloat(p1.y), @intFromFloat(p2.x), @intFromFloat(p2.y), 0xFF00FF00);
+            // c.olivec_line(oc, @intFromFloat(p2.x), @intFromFloat(p2.y), @intFromFloat(p3.x), @intFromFloat(p3.y), 0xFF00FF00);
+            // c.olivec_line(oc, @intFromFloat(p3.x), @intFromFloat(p3.y), @intFromFloat(p1.x), @intFromFloat(p1.y), 0xFF00FF00);
         } else {
             // const x1: i32 = @intFromFloat(p1.x);
             // const x2: i32 = @intFromFloat(p2.x);
@@ -260,35 +264,77 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
             const hy: usize = @intCast(bb[3]);
             for (ly..(hy + 1)) |y| {
                 for (lx..(hx + 1)) |x| {
-                    // var bu1: i32 = 0;
-                    // var bu2: i32 = 0;
-                    // var bdet: i32 = 0;
-                    // if (c.olivec_barycentric(x1, y1, x2, y2, x3, y3, @intCast(x), @intCast(y), &bu1, &bu2, &bdet)) {
-                    //     const bu3: i32 = bdet - bu1 - bu2;
-                    //     const f1: f32 = @as(f32, @floatFromInt(bu1)) / @as(f32, @floatFromInt(bdet));
-                    //     const f2: f32 = @as(f32, @floatFromInt(bu2)) / @as(f32, @floatFromInt(bdet));
-                    //     const f3: f32 = @as(f32, @floatFromInt(bu3)) / @as(f32, @floatFromInt(bdet));
-
-                    //     const z: f32 = 1 / v1.z * f1 + 1 / v2.z * f2 + 1 / v3.z * f3;
-                    //     if (z > zbuffer[x + y * RENDER_WIDTH]) {
-                    //         zbuffer[x + y * RENDER_WIDTH] = z;
-                    //         oc.pixels[x + y * RENDER_WIDTH] = c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, bu1, bu2, bdet);
-                    //     }
-                    // }
-
                     const res = math.point_in_triangle(iVec2{ @intCast(x), @intCast(y) }, ip1, ip2, ip3);
                     if (!res[0])
                         continue;
-                    oc.pixels[x + y * RENDER_WIDTH] = 0xFF1818FF;
-                    const z = math.dot3(res[1], Vec4{ v1.x, v2.z, v3.z, 0 });
+
+                    const weights = res[1];
+
+                    const z = 1 / math.dot3(weights, Vec4{ v1.z, v2.z, v3.z, 0 });
                     if (z > zbuffer[x + y * RENDER_WIDTH]) {
                         zbuffer[x + y * RENDER_WIDTH] = z;
-                        oc.pixels[x + y * RENDER_WIDTH] = 0xFF1818FF; //c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, 1, 2, 3);
+
+                        const r: u32 = @intFromFloat(255.0 * (weights[0]));
+                        const g: u32 = @as(u32, @intFromFloat(255.0 * (weights[1]))) << 8;
+                        const b: u32 = @as(u32, @intFromFloat(255.0 * (weights[2]))) << 16;
+
+                        const color: u32 = 0xFF000000 | r | g | b;
+                        oc.pixels[x + y * RENDER_WIDTH] = color;
                     }
                 }
             }
         }
     }
+}
+
+fn draw_line(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void {
+    bresenham(screen, start, end, color);
+}
+
+fn bresenham(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void {
+    const dx = end[0] - start[0];
+    const dy = end[1] - start[1];
+    var D = 2 * dy - dx;
+    var y = start[1];
+
+    const step: i32 = if (end[0] >= start[0]) 1 else -1;
+    var x = start[0];
+    while (x != end[0]) {
+        screen.pixels[@intCast(x + y * RENDER_WIDTH)] = color;
+        if (D > 0) {
+            y = y + 1;
+            D = D + (2 * (dy - dx));
+        } else {
+            D = D + 2 * dy;
+        }
+
+        x = x + step;
+    }
+
+    // for (@intCast(start[0])..@intCast(end[0])) |x| {
+    //     screen.pixels[x + @as(usize, @intCast(y)) * @as(usize, @intCast(RENDER_WIDTH))] = color;
+    //     if (D > 0) {
+    //         y = y + 1;
+    //         D = D + (2 * (dy - dx));
+    //     } else {
+    //         D = D + 2 * dy;
+    //     }
+    // }
+
+    // plotLine(x0, y0, x1, y1)
+    // dx = x1 - x0
+    // dy = y1 - y0
+    // D = 2*dy - dx
+    // y = y0
+
+    // for x from x0 to x1
+    //     plot(x, y)
+    //     if D > 0
+    //         y = y + 1
+    //         D = D + (2 * (dy - dx))
+    //     else
+    //         D = D + 2*dy
+    //     end if
 }
 
 fn translate_z(p: Point3, dz: f32) Point3 {

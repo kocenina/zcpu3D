@@ -21,13 +21,16 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("Xrandr");
     exe.addCSourceFiles(.{
         .files = &.{
-            "thirdparty/RGFW/RGFW.c",
+            // "thirdparty/RGFW/RGFW.c",    // slow building on LLVM
             "thirdparty/olivec/olivec_impl.c",
         },
     });
 
     exe.linkLibC();
     exe.addIncludePath(b.path("thirdparty"));
+
+    exe.addLibraryPath(b.path("thirdparty/RGFW/lib"));
+    exe.linkSystemLibrary("RGFW");
 
     b.installArtifact(exe);
 

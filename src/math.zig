@@ -60,9 +60,13 @@ pub fn point_in_triangle(point: iVec2, a: iVec2, b: iVec2, c: iVec2) struct { bo
     const area_bcp = signed_triangle_area(b, c, point);
     const area_cap = signed_triangle_area(c, a, point);
 
-    const is_in: bool = area_abp >= 0 and area_bcp >= 0 and area_cap >= 0;
-    if (!is_in)
-        return .{ false, Vec4{ 0, 0, 0, 0 } };
+    var is_in = false;
+    const total_area = area_abp + area_bcp + area_cap;
+    if (total_area > 0) {
+        is_in = area_abp >= 0 and area_bcp >= 0 and area_cap >= 0;
+    } else if (total_area < 0) {
+        is_in = area_abp <= 0 and area_bcp <= 0 and area_cap <= 0;
+    }
 
     const area_normalizer = 1 / (area_abp + area_bcp + area_cap);
     var weights = Vec4{ area_bcp, area_cap, area_abp, 0 }; // A B C
@@ -74,6 +78,8 @@ pub fn point_in_triangle(point: iVec2, a: iVec2, b: iVec2, c: iVec2) struct { bo
 fn signed_triangle_area(a: iVec2, b: iVec2, c: iVec2) f32 {
     const ac = c - a;
     const ba = b - a;
+
+    // TODO use vector ops for perpedicular
     const perpedicular = iVec2{ -ba[1], ba[0] };
     return @as(f32, @floatFromInt(idot2(ac, perpedicular))) / 2;
 }

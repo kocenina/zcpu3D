@@ -1,4 +1,4 @@
 pub const c = @cImport({
-    @cInclude("RGFW/RGFW.h");
+    @cInclude("RGFW/include/RGFW.h");
     @cInclude("olivec/olive.c");
 });
