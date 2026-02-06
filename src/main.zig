@@ -15,6 +15,9 @@ const Camera = @import("camera.zig").Camera;
 
 const c = @import("cimport.zig").c;
 
+const render = @import("render.zig");
+const Color = render.Color;
+
 const RENDER_HEIGHT = 1080 / 2;
 const RENDER_WIDTH = RENDER_HEIGHT;
 
@@ -22,14 +25,6 @@ const RENDER_WIDTH = RENDER_HEIGHT;
 const ENABLE_SCALING = false;
 const TARGET_HEIGHT = if (ENABLE_SCALING) RENDER_HEIGHT * 2 else RENDER_HEIGHT;
 const TARGET_WIDTH = if (ENABLE_SCALING) RENDER_WIDTH * 2 else RENDER_WIDTH;
-
-// RGFW_formatBGRA8
-const Color = struct {
-    b: u8,
-    g: u8,
-    r: u8,
-    a: u8 = 255,
-};
 
 const RED = Color{ .r = 255, .g = 0, .b = 0 };
 const GREEN = Color{ .r = 0, .g = 255, .b = 0 };
@@ -155,9 +150,9 @@ pub fn main() !void {
     }
 }
 
-fn make_target_screen(render: *[RENDER_WIDTH][RENDER_HEIGHT]Color, target: *[TARGET_WIDTH][TARGET_HEIGHT]Color) void {
+fn make_target_screen(screen: *[RENDER_WIDTH][RENDER_HEIGHT]Color, target: *[TARGET_WIDTH][TARGET_HEIGHT]Color) void {
     if (!ENABLE_SCALING) {
-        @memcpy(target, render);
+        @memcpy(target, screen);
         return;
     }
 
@@ -165,7 +160,7 @@ fn make_target_screen(render: *[RENDER_WIDTH][RENDER_HEIGHT]Color, target: *[TAR
 
     // bottleneck
     for (0..RENDER_HEIGHT) |y| {
-        const render_row = &render[y];
+        const render_row = &screen[y];
         const target_row1 = &target[y * 2];
         const target_row2 = &target[y * 2 + 1];
 
@@ -239,20 +234,10 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
             continue;
 
         if (wireframe_on) {
-            draw_line(oc, p1.to_ivec(), p2.to_ivec(), 0xFFFF0000);
-            draw_line(oc, p2.to_ivec(), p3.to_ivec(), 0xFFFF0000);
-            draw_line(oc, p3.to_ivec(), p1.to_ivec(), 0xFFFF0000);
-            // c.olivec_line(oc, @intFromFloat(p1.x), @intFromFloat(p1.y), @intFromFloat(p2.x), @intFromFloat(p2.y), 0xFF00FF00);
-            // c.olivec_line(oc, @intFromFloat(p2.x), @intFromFloat(p2.y), @intFromFloat(p3.x), @intFromFloat(p3.y), 0xFF00FF00);
-            // c.olivec_line(oc, @intFromFloat(p3.x), @intFromFloat(p3.y), @intFromFloat(p1.x), @intFromFloat(p1.y), 0xFF00FF00);
+            render.draw_line(oc, p1.to_ivec(), p2.to_ivec(), 0xFFFF0000);
+            render.draw_line(oc, p2.to_ivec(), p3.to_ivec(), 0xFFFF0000);
+            render.draw_line(oc, p3.to_ivec(), p1.to_ivec(), 0xFFFF0000);
         } else {
-            // const x1: i32 = @intFromFloat(p1.x);
-            // const x2: i32 = @intFromFloat(p2.x);
-            // const x3: i32 = @intFromFloat(p3.x);
-            // const y1: i32 = @intFromFloat(p1.y);
-            // const y2: i32 = @intFromFloat(p2.y);
-            // const y3: i32 = @intFromFloat(p3.y);
-
             const ip1 = p1.to_ivec();
             const ip2 = p2.to_ivec();
             const ip3 = p3.to_ivec();
@@ -285,56 +270,6 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
             }
         }
     }
-}
-
-fn draw_line(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void {
-    bresenham(screen, start, end, color);
-}
-
-fn bresenham(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void {
-    const dx = end[0] - start[0];
-    const dy = end[1] - start[1];
-    var D = 2 * dy - dx;
-    var y = start[1];
-
-    const step: i32 = if (end[0] >= start[0]) 1 else -1;
-    var x = start[0];
-    while (x != end[0]) {
-        screen.pixels[@intCast(x + y * RENDER_WIDTH)] = color;
-        if (D > 0) {
-            y = y + 1;
-            D = D + (2 * (dy - dx));
-        } else {
-            D = D + 2 * dy;
-        }
-
-        x = x + step;
-    }
-
-    // for (@intCast(start[0])..@intCast(end[0])) |x| {
-    //     screen.pixels[x + @as(usize, @intCast(y)) * @as(usize, @intCast(RENDER_WIDTH))] = color;
-    //     if (D > 0) {
-    //         y = y + 1;
-    //         D = D + (2 * (dy - dx));
-    //     } else {
-    //         D = D + 2 * dy;
-    //     }
-    // }
-
-    // plotLine(x0, y0, x1, y1)
-    // dx = x1 - x0
-    // dy = y1 - y0
-    // D = 2*dy - dx
-    // y = y0
-
-    // for x from x0 to x1
-    //     plot(x, y)
-    //     if D > 0
-    //         y = y + 1
-    //         D = D + (2 * (dy - dx))
-    //     else
-    //         D = D + 2*dy
-    //     end if
 }
 
 fn translate_z(p: Point3, dz: f32) Point3 {
