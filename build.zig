@@ -16,12 +16,12 @@ pub fn build(b: *std.Build) void {
         .use_llvm = true, // true for debugging, + LLVM is much faster right now
     });
 
-    // RGFW deps
+    // RGFW deps for Linux, no idea what should I do on Windows.
     exe.linkSystemLibrary("X11");
     exe.linkSystemLibrary("Xrandr");
     exe.addCSourceFiles(.{
         .files = &.{
-            // "thirdparty/RGFW/RGFW.c",    // slow building on LLVM
+            // "thirdparty/RGFW/RGFW.c",    // Slow building on LLVM, prefer to linking static library. However if linking fails, just uncomment line so zig will build file itself.
         },
     });
 

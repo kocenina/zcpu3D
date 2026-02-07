@@ -2,10 +2,13 @@ const math = @import("math.zig");
 const iVec2 = math.iVec2;
 const Vec4 = math.Vec4;
 
-const c = @import("cimport.zig").c;
 const fonts = @import("fonts.zig");
 
 const std = @import("std");
+
+pub const Error = error{
+    CannotCreateBoundingBox,
+};
 
 // RGFW_formatBGRA8
 pub const Color = packed struct {
@@ -69,14 +72,14 @@ fn define_screen_buffer(T: type) type {
 }
 
 pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b: iVec2, projected_c: iVec2, original_z: Vec4, zbuffer: DepthBuffer) bool {
-    const bb = math.triangle_bb(projected_a, projected_b, projected_c, @intCast(screen_buffer.width), @intCast(screen_buffer.height)) catch return false;
+    const bb = triangle_bb(projected_a, projected_b, projected_c, @intCast(screen_buffer.width), @intCast(screen_buffer.height)) catch return false;
     const lx: usize = @intCast(bb[0]);
     const ly: usize = @intCast(bb[1]);
     const hx: usize = @intCast(bb[2]);
     const hy: usize = @intCast(bb[3]);
     for (ly..(hy + 1)) |y| {
         for (lx..(hx + 1)) |x| {
-            const res = math.point_in_triangle(iVec2{ @intCast(x), @intCast(y) }, projected_a, projected_b, projected_c);
+            const res = point_in_triangle(iVec2{ @intCast(x), @intCast(y) }, projected_a, projected_b, projected_c);
             if (!res[0])
                 continue;
 
@@ -133,6 +136,40 @@ pub fn draw_text(screen_buffer: ImageBuffer, text: []const u8, x: usize, y: usiz
     }
 }
 
+pub fn draw_point(screen_buffer: ImageBuffer, point: math.Point2, color: Color) void {
+    const point_size = 10;
+    draw_rect(screen_buffer, @as(i32, @intFromFloat(point.x)) - point_size / 2, @as(i32, @intFromFloat(point.y)) - point_size / 2, point_size, point_size, color);
+}
+
+pub fn draw_rect(screen_buffer: ImageBuffer, x: i32, y: i32, width: i32, height: i32, color: Color) void {
+    var start_x: usize = @intCast(@max(0, x));
+    start_x = @min(screen_buffer.width, start_x);
+
+    var end_x: usize = @intCast(@max(0, x + width));
+    end_x = @min(screen_buffer.width, end_x);
+
+    var start_y: usize = @intCast(@max(0, y));
+    start_y = @min(screen_buffer.height, start_y);
+
+    var end_y: usize = @intCast(@max(0, y + height));
+    end_y = @min(screen_buffer.height, end_y);
+
+    for (@intCast(start_x)..@intCast(end_x)) |xx| {
+        for (@intCast(start_y)..@intCast(end_y)) |yy| {
+            screen_buffer.set(xx, yy, color);
+        }
+    }
+}
+
+pub fn point_to_screen(point: math.Point2, screen_buffer: ImageBuffer) math.Point2 {
+    return .{ .x = (point.x + 1) / 2 * @as(f32, @floatFromInt(screen_buffer.width)), .y = (1 - (point.y + 1) / 2) * @as(f32, @floatFromInt(screen_buffer.height)) };
+}
+
+pub fn point_3d_to_2d(point: math.Point3) math.Point2 {
+    const z: f32 = if (point.z != 0) point.z else std.math.floatMax(f32);
+    return .{ .x = point.x / z, .y = point.y / z };
+}
+
 fn bresenham(screen_buffer: ImageBuffer, start: iVec2, end: iVec2, color: Color) void {
     var x0: i32 = start[0];
     var y0: i32 = start[1];
@@ -161,4 +198,63 @@ fn bresenham(screen_buffer: ImageBuffer, start: iVec2, end: iVec2, color: Color)
             y0 = y0 + sy;
         }
     }
+}
+
+fn triangle_bb(p1: iVec2, p2: iVec2, p3: iVec2, screen_width: u32, screen_height: u32) Error!struct { i32, i32, i32, i32 } {
+    var lx: i32 = p1[0];
+    var hx: i32 = p1[0];
+
+    if (lx > p2[0]) lx = p2[0];
+    if (lx > p3[0]) lx = p3[0];
+    if (lx < 0) lx = 0;
+    if (lx >= screen_width) return Error.CannotCreateBoundingBox;
+
+    if (hx < p2[0]) hx = p2[0];
+    if (hx < p3[0]) hx = p3[0];
+    if (hx >= screen_width) hx = @intCast(screen_width - 1);
+    if (hx < 0) return Error.CannotCreateBoundingBox;
+
+    var ly: i32 = p1[1];
+    var hy: i32 = p1[1];
+
+    if (ly > p2[1]) ly = p2[1];
+    if (ly > p3[1]) ly = p3[1];
+    if (ly < 0) ly = 0;
+    if (ly >= screen_height) return Error.CannotCreateBoundingBox;
+
+    if (hy < p2[1]) hy = p2[1];
+    if (hy < p3[1]) hy = p3[1];
+    if (hy >= screen_height) hy = @intCast(screen_height - 1);
+    if (hy < 0) return Error.CannotCreateBoundingBox;
+
+    return .{ lx, ly, hx, hy };
+}
+
+fn point_in_triangle(point: iVec2, a: iVec2, b: iVec2, c: iVec2) struct { bool, Vec4 } {
+    const area_abp = signed_triangle_area(a, b, point);
+    const area_bcp = signed_triangle_area(b, c, point);
+    const area_cap = signed_triangle_area(c, a, point);
+
+    var is_in = false;
+    const total_area = area_abp + area_bcp + area_cap;
+    if (total_area > 0) {
+        is_in = area_abp >= 0 and area_bcp >= 0 and area_cap >= 0;
+    } else if (total_area < 0) {
+        is_in = area_abp <= 0 and area_bcp <= 0 and area_cap <= 0;
+    }
+
+    const area_normalizer = 1 / (area_abp + area_bcp + area_cap);
+    var weights = Vec4{ area_bcp, area_cap, area_abp, 0 }; // A B C
+    weights = weights * @as(Vec4, @splat(area_normalizer));
+
+    return .{ is_in, weights };
+}
+
+fn signed_triangle_area(a: iVec2, b: iVec2, c: iVec2) f32 {
+    const ac = c - a;
+    const ba = b - a;
+
+    // TODO use vector ops for perpedicular
+    const perpedicular = iVec2{ -ba[1], ba[0] };
+    return @as(f32, @floatFromInt(math.idot2(ac, perpedicular))) / 2;
 }

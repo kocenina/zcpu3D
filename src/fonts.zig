@@ -9,6 +9,7 @@ const Font = struct {
     glyphs: []const u8,
 };
 
+// incomplete
 fn make_default_font() [128][7][5]u8 {
     var default_font: [128][7][5]u8 = std.mem.zeroes([128][7][5]u8);
     default_font[0] = .{
@@ -29,6 +30,16 @@ fn make_default_font() [128][7][5]u8 {
         .{ 0, 0, 0, 0, 0 },
         .{ 0, 0, 0, 0, 0 },
         .{ 0, 0, 1, 0, 0 },
+    };
+
+    default_font['-'] = .{
+        .{ 0, 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0, 0 },
+        .{ 0, 1, 1, 1, 0 },
+        .{ 0, 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0, 0 },
     };
 
     default_font['a'] = .{
