@@ -29,7 +29,6 @@ const TARGET_WIDTH = if (ENABLE_SCALING) RENDER_WIDTH * 2 else RENDER_WIDTH;
 const RED = Color{ .r = 255, .g = 0, .b = 0 };
 const GREEN = Color{ .r = 0, .g = 255, .b = 0 };
 const BLUE = Color{ .r = 0, .g = 0, .b = 255 };
-
 const WHITE = Color{ .r = 255, .g = 255, .b = 255 };
 
 const BACKGROUND = Color{ .r = 0, .g = 0, .b = 0 };
