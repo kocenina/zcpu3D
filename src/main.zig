@@ -78,11 +78,14 @@ pub fn main() !void {
 
     var angle: f32 = 0;
 
-    var teapot_mesh = model.Model.load(allocator, "assets/teapot.obj");
-    defer teapot_mesh.deinit();
+    // var teapot_mesh = model.Model.load(allocator, "assets/teapot.obj");
+    // defer teapot_mesh.deinit();
 
-    var monkey_mesh = model.Model.load(allocator, "assets/monkey.obj");
-    defer monkey_mesh.deinit();
+    // var monkey_mesh = model.Model.load(allocator, "assets/monkey.obj");
+    // defer monkey_mesh.deinit();
+
+    var truck_mesh = model.Model.load(allocator, "assets/kenny/firetruck.obj");
+    defer truck_mesh.deinit();
 
     var camera = Camera.init();
     camera.position[0] = 8;
@@ -118,19 +121,22 @@ pub fn main() !void {
         const rotation = math.rotation_y(angle);
 
         var transform = math.translation_matrix(0, 0, 5);
-        draw_entity(render_buffer, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
+        // draw_entity(render_buffer, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
+
+        // transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
+        // draw_entity(render_buffer, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, true, FaceCulling.BACK, allocator);
+
+        // transform = math.mul_mat_mul(math.translation_matrix(5, -1, 0), transform);
+        // draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
+
+        // transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
+        // draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.FRONT, allocator);
+
+        // transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
+        // draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, true, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(render_buffer, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, true, FaceCulling.BACK, allocator);
-
-        transform = math.mul_mat_mul(math.translation_matrix(5, -1, 0), transform);
-        draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
-
-        transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.FRONT, allocator);
-
-        transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, true, FaceCulling.BACK, allocator);
+        draw_entity(render_buffer, &truck_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
 
         check_fps(render_buffer, refresh_rate);
         time_diff += dt;
