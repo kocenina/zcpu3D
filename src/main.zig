@@ -4,6 +4,9 @@ const math = @import("math.zig");
 const Point2 = math.Point2;
 const Point3 = math.Point3;
 
+const iVec2 = math.iVec2;
+
+const Vec3 = math.Vec3;
 const Vec4 = math.Vec4;
 const Mat4 = math.Mat4;
 
@@ -12,7 +15,10 @@ const Camera = @import("camera.zig").Camera;
 
 const c = @import("cimport.zig").c;
 
-const RENDER_HEIGHT = 1080 / 2;
+const render = @import("render.zig");
+const Color = render.Color;
+
+const RENDER_HEIGHT = 1080 / 1;
 const RENDER_WIDTH = RENDER_HEIGHT;
 
 // Rendering at 0.5 resolution scale
@@ -20,17 +26,11 @@ const ENABLE_SCALING = false;
 const TARGET_HEIGHT = if (ENABLE_SCALING) RENDER_HEIGHT * 2 else RENDER_HEIGHT;
 const TARGET_WIDTH = if (ENABLE_SCALING) RENDER_WIDTH * 2 else RENDER_WIDTH;
 
-// RGFW_formatBGRA8
-const Color = struct {
-    b: u8,
-    g: u8,
-    r: u8,
-    a: u8 = 255,
-};
-
 const RED = Color{ .r = 255, .g = 0, .b = 0 };
 const GREEN = Color{ .r = 0, .g = 255, .b = 0 };
 const BLUE = Color{ .r = 0, .g = 0, .b = 255 };
+
+const WHITE = Color{ .r = 255, .g = 255, .b = 255 };
 
 const BACKGROUND = Color{ .r = 0, .g = 0, .b = 0 };
 
@@ -57,15 +57,19 @@ pub fn main() !void {
     const window = c.RGFW_createWindow("zcpu3D", 0, 0, TARGET_WIDTH, TARGET_HEIGHT, c.RGFW_windowCenter | c.RGFW_windowNoResize | c.RGFW_windowHideMouse | c.RGFW_windowCaptureMouse);
     defer c.RGFW_window_close(window);
 
-    var target_buffer: [TARGET_WIDTH][TARGET_HEIGHT]Color = std.mem.zeroes([TARGET_WIDTH][TARGET_HEIGHT]Color);
+    var target_buffer = render.ImageBuffer.init(allocator, TARGET_WIDTH, TARGET_HEIGHT);
+    defer target_buffer.deinit();
+
     // need to go with native format RGFW_formatBGRA8, otherwise RGFW_copyImageData64 will be making copy of buffer one by one pixel.
-    const surface = c.RGFW_createSurface(@ptrCast(&target_buffer), TARGET_WIDTH, TARGET_HEIGHT, c.RGFW_formatBGRA8);
+    const surface = c.RGFW_createSurface(@ptrCast(target_buffer.data.ptr), @intCast(target_buffer.width), @intCast(target_buffer.height), c.RGFW_formatBGRA8);
     defer c.RGFW_surface_free(surface);
 
-    var render_buffer: [RENDER_WIDTH][RENDER_HEIGHT]Color = undefined;
-    clear_buffer(@ptrCast(&render_buffer), RENDER_WIDTH, RENDER_HEIGHT, BACKGROUND);
-    const olivec_canvas = c.olivec_canvas(@ptrCast(@alignCast(&render_buffer)), RENDER_WIDTH, RENDER_HEIGHT, RENDER_WIDTH);
-    var zbuffer: [RENDER_WIDTH * RENDER_HEIGHT]f32 = std.mem.zeroes([RENDER_WIDTH * RENDER_HEIGHT]f32);
+    var render_buffer = render.ImageBuffer.init(allocator, RENDER_WIDTH, RENDER_HEIGHT);
+    defer render_buffer.deinit();
+    render_buffer.set_all(BACKGROUND);
+
+    var zbuffer = render.DepthBuffer.init(allocator, RENDER_WIDTH, RENDER_HEIGHT);
+    defer zbuffer.deinit();
 
     const fps_refresh_frequency_micro = 100_000;
     var old_time = std.time.microTimestamp();
@@ -87,7 +91,7 @@ pub fn main() !void {
     camera.position[2] = -15;
     camera.yaw = 0;
 
-    const perspective = math.perspective_matrix(70, @as(f32, @floatFromInt(RENDER_WIDTH)) / @as(f32, @floatFromInt(RENDER_HEIGHT)), 0.1, 500);
+    const perspective = math.perspective_matrix(70, @as(f32, @floatFromInt(render_buffer.width)) / @as(f32, @floatFromInt(render_buffer.height)), 0.1, 500);
 
     var vp = VP{ .projection = perspective };
 
@@ -98,14 +102,15 @@ pub fn main() !void {
     while (c.RGFW_window_shouldClose(window) == c.RGFW_FALSE) {
         while (c.RGFW_window_checkEvent(window, &event) == c.RGFW_TRUE) {}
 
-        clear_buffer(@ptrCast(&render_buffer), RENDER_WIDTH, RENDER_HEIGHT, BACKGROUND);
-        zbuffer = std.mem.zeroes([RENDER_WIDTH * RENDER_HEIGHT]f32);
+        render_buffer.set_all(BACKGROUND);
+        zbuffer.zero();
 
         const cur_time = std.time.microTimestamp();
         const dt = cur_time - old_time;
         const usable_dt = @as(f32, @floatFromInt(dt)) / 1_000_000;
         old_time = cur_time;
         angle += usable_dt * std.math.pi / 2.0;
+        angle = 0;
 
         camera.update(window.?, usable_dt);
         vp.view = math.look_at(camera.position, camera.front, camera.up);
@@ -114,26 +119,21 @@ pub fn main() !void {
         const rotation = math.rotation_y(angle);
 
         var transform = math.translation_matrix(0, 0, 5);
-        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, FaceCulling.BACK, allocator);
+        draw_entity(render_buffer, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true, FaceCulling.BACK, allocator);
+        draw_entity(render_buffer, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, true, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, -1, 0), transform);
-        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, FaceCulling.BACK, allocator);
+        draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, FaceCulling.FRONT, allocator);
+        draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.FRONT, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        draw_entity(olivec_canvas, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, true, FaceCulling.BACK, allocator);
+        draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, true, FaceCulling.BACK, allocator);
 
-        // for (0..100) |_| {
-        //     transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        //     draw_entity(olivec_canvas, &monkey_mesh, math.mul_mat_mul(rotation, transform), view_proj, &zbuffer, false, allocator);
-        // }
-
-        check_fps(olivec_canvas, refresh_rate);
+        check_fps(render_buffer, refresh_rate);
         time_diff += dt;
         if (time_diff >= fps_refresh_frequency_micro) {
             refresh_rate = @as(f32, @floatFromInt(time_diff)) / @as(f32, @floatFromInt(1000 * number_of_frames));
@@ -147,25 +147,23 @@ pub fn main() !void {
         c.RGFW_window_blitSurface(window, surface);
 
         // slow down
-        // std.Thread.sleep(15_000_000);
+        std.Thread.sleep(15_000_000);
     }
 }
 
-fn make_target_screen(render: *[RENDER_WIDTH][RENDER_HEIGHT]Color, target: *[TARGET_WIDTH][TARGET_HEIGHT]Color) void {
+fn make_target_screen(render_buffer: *render.ImageBuffer, target: *render.ImageBuffer) void {
     if (!ENABLE_SCALING) {
-        @memcpy(target, render);
+        @memcpy(target.data, render_buffer.data);
         return;
     }
 
-    clear_buffer(@ptrCast(target), TARGET_WIDTH, TARGET_HEIGHT, BACKGROUND);
+    // maybe bottleneck
+    for (0..render_buffer.height) |y| {
+        const render_row = render_buffer.data[y * render_buffer.width .. (y * render_buffer.width + render_buffer.width)]; // row slice
+        const target_row1 = target.data[y * 2 * target.width .. (y * 2 * target.width + target.width)];
+        const target_row2 = target.data[(y * 2 + 1) * target.width .. ((y * 2 + 1) * target.width + target.width)];
 
-    // bottleneck
-    for (0..RENDER_HEIGHT) |y| {
-        const render_row = &render[y];
-        const target_row1 = &target[y * 2];
-        const target_row2 = &target[y * 2 + 1];
-
-        for (0..RENDER_WIDTH) |x| {
+        for (render_row, 0..) |_, x| {
             const color = render_row[x];
 
             target_row1[x * 2] = color;
@@ -176,11 +174,7 @@ fn make_target_screen(render: *[RENDER_WIDTH][RENDER_HEIGHT]Color, target: *[TAR
     }
 }
 
-fn printm(m: Mat4) void {
-    std.debug.print("{any}\n", .{m});
-}
-
-fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, view_projection: Mat4, zbuffer: []f32, wireframe_on: bool, culling: FaceCulling, allocator: std.mem.Allocator) void {
+fn draw_entity(screen_buffer: render.ImageBuffer, mesh: *const model.Model, transform: Mat4, view_projection: Mat4, zbuffer: render.DepthBuffer, wireframe_on: bool, culling: FaceCulling, allocator: std.mem.Allocator) void {
     const mvp_calc = math.mul_mat_mul(transform, view_projection);
 
     const translated_verices = allocator.alloc(Point3, mesh.vertices.len) catch @panic("OOM");
@@ -195,9 +189,9 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
         const v2 = translated_verices[mesh.faces[ind * 3 + 1]];
         const v3 = translated_verices[mesh.faces[ind * 3 + 2]];
 
-        const p1 = point_to_screen(point_3_2(v1));
-        const p2 = point_to_screen(point_3_2(v2));
-        const p3 = point_to_screen(point_3_2(v3));
+        const p1 = render.point_to_screen(render.point_3d_to_2d(v1), screen_buffer);
+        const p2 = render.point_to_screen(render.point_3d_to_2d(v2), screen_buffer);
+        const p3 = render.point_to_screen(render.point_3d_to_2d(v3), screen_buffer);
 
         // culling
         {
@@ -224,112 +218,33 @@ fn draw_entity(oc: c.Olivec_Canvas, mesh: *const model.Model, transform: Mat4, v
             }
         }
 
+        // cut triangles off the screen
         const max_offset = 100.0;
-        if (p1.x < -max_offset or p1.x > RENDER_WIDTH + max_offset or p1.y < -max_offset or p1.y > RENDER_HEIGHT + max_offset)
+        if (p1.x < -max_offset or p1.x > @as(f32, @floatFromInt(screen_buffer.width)) + max_offset or p1.y < -max_offset or p1.y > @as(f32, @floatFromInt(screen_buffer.height)) + max_offset)
             continue;
 
-        if (p2.x < -max_offset or p2.x > RENDER_WIDTH + max_offset or p2.y < -max_offset or p2.y > RENDER_HEIGHT + max_offset)
+        if (p2.x < -max_offset or p2.x > @as(f32, @floatFromInt(screen_buffer.width)) + max_offset or p2.y < -max_offset or p2.y > @as(f32, @floatFromInt(screen_buffer.height)) + max_offset)
             continue;
 
-        if (p3.x < -max_offset or p3.x > RENDER_WIDTH + max_offset or p3.y < -max_offset or p3.y > RENDER_HEIGHT + max_offset)
+        if (p3.x < -max_offset or p3.x > @as(f32, @floatFromInt(screen_buffer.width)) + max_offset or p3.y < -max_offset or p3.y > @as(f32, @floatFromInt(screen_buffer.height)) + max_offset)
             continue;
 
         if (wireframe_on) {
-            c.olivec_line(oc, @intFromFloat(p1.x), @intFromFloat(p1.y), @intFromFloat(p2.x), @intFromFloat(p2.y), 0xFF00FF00);
-            c.olivec_line(oc, @intFromFloat(p2.x), @intFromFloat(p2.y), @intFromFloat(p3.x), @intFromFloat(p3.y), 0xFF00FF00);
-            c.olivec_line(oc, @intFromFloat(p3.x), @intFromFloat(p3.y), @intFromFloat(p1.x), @intFromFloat(p1.y), 0xFF00FF00);
+            render.draw_line(screen_buffer, p1.to_ivec(), p2.to_ivec(), GREEN);
+            render.draw_line(screen_buffer, p2.to_ivec(), p3.to_ivec(), GREEN);
+            render.draw_line(screen_buffer, p3.to_ivec(), p1.to_ivec(), GREEN);
         } else {
-            const x1: i32 = @intFromFloat(p1.x);
-            const x2: i32 = @intFromFloat(p2.x);
-            const x3: i32 = @intFromFloat(p3.x);
-            const y1: i32 = @intFromFloat(p1.y);
-            const y2: i32 = @intFromFloat(p2.y);
-            const y3: i32 = @intFromFloat(p3.y);
-            var lx: i32 = 0;
-            var hx: i32 = 0;
-            var ly: i32 = 0;
-            var hy: i32 = 0;
-            if (c.olivec_normalize_triangle(oc.width, oc.height, x1, y1, x2, y2, x3, y3, &lx, &hx, &ly, &hy)) {
-                for (@intCast(ly)..@intCast(hy + 1)) |y| {
-                    for (@intCast(lx)..@intCast(hx + 1)) |x| {
-                        var bu1: i32 = 0;
-                        var bu2: i32 = 0;
-                        var bdet: i32 = 0;
-                        if (c.olivec_barycentric(x1, y1, x2, y2, x3, y3, @intCast(x), @intCast(y), &bu1, &bu2, &bdet)) {
-                            const bu3: i32 = bdet - bu1 - bu2;
-                            const f1: f32 = @as(f32, @floatFromInt(bu1)) / @as(f32, @floatFromInt(bdet));
-                            const f2: f32 = @as(f32, @floatFromInt(bu2)) / @as(f32, @floatFromInt(bdet));
-                            const f3: f32 = @as(f32, @floatFromInt(bu3)) / @as(f32, @floatFromInt(bdet));
+            const ip1 = p1.to_ivec();
+            const ip2 = p2.to_ivec();
+            const ip3 = p3.to_ivec();
 
-                            const z: f32 = 1 / v1.z * f1 + 1 / v2.z * f2 + 1 / v3.z * f3;
-                            if (z > zbuffer[x + y * RENDER_WIDTH]) {
-                                zbuffer[x + y * RENDER_WIDTH] = z;
-                                oc.pixels[x + y * RENDER_WIDTH] = c.olivec_mix_colors3(0xFF1818FF, 0xFF18FF18, 0xFFFF1818, bu1, bu2, bdet);
-                            }
-                        }
-                    }
-                }
-            }
+            _ = render.draw_triangle(screen_buffer, ip1, ip2, ip3, Vec4{ v1.z, v2.z, v3.z, 0 }, zbuffer);
         }
     }
 }
 
-fn translate_z(p: Point3, dz: f32) Point3 {
-    return Point3.init(p.x, p.y - 2, p.z + dz);
-}
-
-fn rotate_y(point: Point3, angle: f32) Point3 {
-    const cos = std.math.cos(angle);
-    const sin = std.math.sin(angle);
-    const x = cos * point.x - sin * point.z;
-    const z = sin * point.x + cos * point.z;
-    return .{ .x = x, .y = point.y, .z = z };
-}
-
-fn point_to_screen(point: Point2) Point2 {
-    return .{ .x = (point.x + 1) / 2 * RENDER_WIDTH, .y = (1 - (point.y + 1) / 2) * RENDER_HEIGHT };
-}
-
-fn point_3_2(point: Point3) Point2 {
-    const z: f32 = if (point.z != 0) point.z else 10000000.0;
-    return .{ .x = point.x / z, .y = point.y / z };
-}
-
-fn check_fps(oc: c.Olivec_Canvas, refresh_rate: f32) void {
+fn check_fps(screen_buffer: render.ImageBuffer, refresh_rate: f32) void {
     var buffer = [_]u8{0} ** 64;
-    const title = std.fmt.bufPrint(&buffer, "{}x{} ms: {d:.2}, fps: {d:.2}", .{ RENDER_WIDTH, RENDER_HEIGHT, refresh_rate, 1000 / @max(refresh_rate, 0.01) }) catch @panic("smol buffer");
-
-    c.olivec_text(oc, title.ptr, 10, 10, c.olivec_default_font, 2, 0xFFFFFFFF);
-}
-
-fn clear_buffer(buffer: [*]Color, width: i32, height: i32, color: Color) void {
-    if (width == 0 or height == 0)
-        return;
-
-    @memset(buffer[0..@intCast(width * height)], color);
-}
-
-fn draw_point(buffer: [*]Color, point: Point2) void {
-    const point_size = 10;
-    draw_rect(buffer, RENDER_WIDTH, RENDER_HEIGHT, GREEN, @as(i32, @intFromFloat(point.x)) - point_size / 2, @as(i32, @intFromFloat(point.y)) - point_size / 2, point_size, point_size);
-}
-
-fn draw_rect(buffer: [*]Color, b_width: i32, b_height: i32, color: Color, x: i32, y: i32, width: i32, height: i32) void {
-    var start_x: i32 = @max(0, x);
-    start_x = @min(b_width, start_x);
-
-    var end_x: i32 = @max(0, x + width);
-    end_x = @min(b_width, end_x);
-
-    var start_y: i32 = @max(0, y);
-    start_y = @min(b_height, start_y);
-
-    var end_y: i32 = @max(0, y + height);
-    end_y = @min(b_height, end_y);
-
-    for (@intCast(start_x)..@intCast(end_x)) |xx| {
-        for (@intCast(start_y)..@intCast(end_y)) |yy| {
-            buffer[xx + (yy * @as(usize, @intCast(b_width)))] = color;
-        }
-    }
+    const title = std.fmt.bufPrint(&buffer, "{}x{} ms: {d:.2}, fps: {d:.2}", .{ screen_buffer.width, screen_buffer.height, refresh_rate, 1000 / @max(refresh_rate, 0.01) }) catch @panic("smol buffer");
+    render.draw_text(screen_buffer, title, 10, 10, 4, WHITE);
 }

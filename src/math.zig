@@ -2,8 +2,16 @@ pub const Point2 = struct {
     x: f32 = 0,
     y: f32 = 0,
 
+    pub fn init(x: f32, y: f32) Point2 {
+        return .{ .x = x, .y = y };
+    }
+
     pub fn to_vec(self: *const Point2) Vec4 {
         return .{ self.x, self.y, 0, 0 };
+    }
+
+    pub fn to_ivec(self: *const Point2) iVec2 {
+        return .{ @intFromFloat(self.x), @intFromFloat(self.y) };
     }
 };
 
@@ -17,8 +25,8 @@ pub const Point3 = struct {
     }
 };
 
-const Vec3 = @Vector(3, f32);
-
+pub const iVec2 = @Vector(2, i32);
+pub const Vec3 = @Vector(3, f32);
 pub const Vec4 = @Vector(4, f32);
 pub const ZeroVec4: Vec4 = @splat(0);
 
@@ -78,6 +86,11 @@ pub inline fn transform_position(p: Point3, m: Mat4) Point3 {
     return .{ .x = v[0], .y = v[1], .z = v[2] };
 }
 
+pub inline fn idot2(vec1: iVec2, vec2: iVec2) i32 {
+    const vec = vec1 * vec2;
+    return @reduce(.Add, vec);
+}
+
 inline fn dot4(vec1: Vec4, vec2: Vec4) f32 {
     const vec = vec1 * vec2;
     return @reduce(.Add, vec);
@@ -103,12 +116,11 @@ pub inline fn transpose_matrix(mat: Mat4) Mat4 {
 }
 
 pub inline fn vec_mat_mul(v: Vec4, m: Mat4) Vec4 {
-    const tm = m;
     return .{
-        dot4(v, tm[0]),
-        dot4(v, tm[1]),
-        dot4(v, tm[2]),
-        dot4(v, tm[3]),
+        dot4(v, m[0]),
+        dot4(v, m[1]),
+        dot4(v, m[2]),
+        dot4(v, m[3]),
     };
 }
 
