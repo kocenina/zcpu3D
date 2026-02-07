@@ -4,7 +4,7 @@
 
 ![Screen](/images/screen02.gif)
 
-Demo is using **RGFW** for rendering screen and **olive.c** for rasterizing triangles and lines. 
+Demo is using **RGFW** to render screen. 
 It is capable of rendering several meshes, that can be imported from `.obj` files.
 
 This is just experiment to brush up knowledge on math and sofware rendering.\
@@ -13,4 +13,3 @@ If you want to have blazingly fast app, run `make fast`.
 
 ## Credits:
 - [RGFW](https://github.com/ColleagueRiley/RGFW)
-- [olive.c](https://github.com/tsoding/olive.c)

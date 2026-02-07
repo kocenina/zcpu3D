@@ -1,12 +1,14 @@
 const math = @import("math.zig");
 const iVec2 = math.iVec2;
+const Vec4 = math.Vec4;
 
 const c = @import("cimport.zig").c;
+const fonts = @import("fonts.zig");
 
 const std = @import("std");
 
 // RGFW_formatBGRA8
-pub const Color = struct {
+pub const Color = packed struct {
     b: u8,
     g: u8,
     r: u8,
@@ -19,24 +21,119 @@ pub const DepthBuffer = define_screen_buffer(f32);
 fn define_screen_buffer(T: type) type {
     return struct {
         data: []T,
-        width: u32,
-        height: u32,
+        width: usize,
+        height: usize,
+        allocator: std.mem.Allocator,
+
+        pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) @This() {
+            const data = allocator.alloc(T, width * height) catch @panic("OOM");
+            @memset(data, std.mem.zeroes(T));
+
+            return .{
+                .data = data,
+                .width = width,
+                .height = height,
+                .allocator = allocator,
+            };
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.allocator.free(self.data);
+        }
+
+        // https://ziglang.org/documentation/master/#Pass-by-value-Parameters
+        // Structs, unions, and arrays can sometimes be more efficiently passed as a reference, since a copy could be arbitrarily expensive depending on the size.
+        // When these types are passed as parameters, Zig may choose to copy and pass by value, or pass by reference, whichever way Zig decides will be faster.
+        // This is made possible, in part, by the fact that parameters are immutable.
+
+        pub inline fn get(self: @This(), x: usize, y: usize) T {
+            return self.data[x + y * self.width];
+        }
+
+        pub inline fn set(self: @This(), x: usize, y: usize, stuff: T) void {
+            self.data[x + y * self.width] = stuff;
+        }
+
+        pub inline fn iexists(self: @This(), x: i32, y: i32) bool {
+            return x >= 0 and @as(usize, @intCast(x)) < self.width and y >= 0 and @as(usize, @intCast(y)) < self.height;
+        }
 
         pub fn set_all(self: @This(), stuff: T) void {
-            @memset(self.data[0..@intCast(self.width * self.height)], stuff);
+            @memset(self.data[0 .. self.width * self.height], stuff);
         }
 
         pub fn zero(self: @This()) void {
-            std.mem.zeroes([@intCast(self.width * self.height)]f32);
+            @memset(self.data, std.mem.zeroes(T));
         }
     };
 }
 
-pub fn draw_line(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void {
-    bresenham(screen, start, end, color);
+pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b: iVec2, projected_c: iVec2, original_z: Vec4, zbuffer: DepthBuffer) bool {
+    const bb = math.triangle_bb(projected_a, projected_b, projected_c, @intCast(screen_buffer.width), @intCast(screen_buffer.height)) catch return false;
+    const lx: usize = @intCast(bb[0]);
+    const ly: usize = @intCast(bb[1]);
+    const hx: usize = @intCast(bb[2]);
+    const hy: usize = @intCast(bb[3]);
+    for (ly..(hy + 1)) |y| {
+        for (lx..(hx + 1)) |x| {
+            const res = math.point_in_triangle(iVec2{ @intCast(x), @intCast(y) }, projected_a, projected_b, projected_c);
+            if (!res[0])
+                continue;
+
+            const weights = res[1];
+
+            const z = 1 / math.dot3(weights, original_z);
+            if (z > zbuffer.get(x, y)) {
+                zbuffer.set(x, y, z);
+
+                const r: u32 = @intFromFloat(255.0 * (weights[0]));
+                const g: u32 = @as(u32, @intFromFloat(255.0 * (weights[1]))) << 8;
+                const b: u32 = @as(u32, @intFromFloat(255.0 * (weights[2]))) << 16;
+
+                const color: u32 = 0xFF000000 | r | g | b;
+                screen_buffer.set(x, y, @bitCast(color));
+            }
+        }
+    }
+
+    return true;
 }
 
-fn bresenham(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void {
+pub fn draw_line(screen_buffer: ImageBuffer, start: iVec2, end: iVec2, color: Color) void {
+    bresenham(screen_buffer, start, end, color);
+}
+
+pub fn draw_text(screen_buffer: ImageBuffer, text: []const u8, x: usize, y: usize, size: usize, color: Color) void {
+    const font = fonts.DEFAULT_FONT;
+
+    // inspired by olive.c
+    for (text, 0..) |char, idx| {
+        const gx = x + idx * font.width * (size + 1);
+        const gy = y;
+        const glyph = font.glyphs[char * font.width * font.height .. (char * font.width * font.height + font.width * font.height)];
+
+        for (0..font.height) |sy| {
+            for (0..font.width) |sx| {
+                const px = gx + sx * size;
+                const py = gy + sy * size;
+
+                if (px >= screen_buffer.width or py >= screen_buffer.height)
+                    continue;
+
+                if (glyph[sx + sy * font.width] == 0)
+                    continue;
+
+                for (0..size) |spy| {
+                    for (0..size) |spx| {
+                        screen_buffer.set(px + spx, py + spy, color);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn bresenham(screen_buffer: ImageBuffer, start: iVec2, end: iVec2, color: Color) void {
     var x0: i32 = start[0];
     var y0: i32 = start[1];
     const x1: i32 = end[0];
@@ -48,8 +145,8 @@ fn bresenham(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void
     var e = dx + dy;
 
     while (true) {
-        if (point_on_screen(screen, x0, y0)) {
-            color_px(screen, x0, y0, color);
+        if (screen_buffer.iexists(x0, y0)) {
+            screen_buffer.set(@intCast(x0), @intCast(y0), color);
         }
 
         const e2 = 2 * e;
@@ -64,12 +161,4 @@ fn bresenham(screen: c.Olivec_Canvas, start: iVec2, end: iVec2, color: u32) void
             y0 = y0 + sy;
         }
     }
-}
-
-inline fn point_on_screen(screen: c.Olivec_Canvas, x: i32, y: i32) bool {
-    return x >= 0 and x < screen.width and y >= 0 and y < screen.height;
-}
-
-inline fn color_px(screen: c.Olivec_Canvas, x: i32, y: i32, color: u32) void {
-    screen.pixels[@as(usize, @intCast(x)) + @as(usize, @intCast(y)) * screen.width] = color;
 }

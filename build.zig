@@ -22,15 +22,13 @@ pub fn build(b: *std.Build) void {
     exe.addCSourceFiles(.{
         .files = &.{
             // "thirdparty/RGFW/RGFW.c",    // slow building on LLVM
-            "thirdparty/olivec/olivec_impl.c",
         },
     });
 
+    exe.addObjectFile(b.path("thirdparty/RGFW/lib/libRGFW.a")); // faster then using stb-style header file
+
     exe.linkLibC();
     exe.addIncludePath(b.path("thirdparty"));
-
-    exe.addLibraryPath(b.path("thirdparty/RGFW/lib"));
-    exe.linkSystemLibrary("RGFW");
 
     b.installArtifact(exe);
 
