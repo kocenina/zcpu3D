@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("Xrandr");
     exe.addCSourceFiles(.{
         .files = &.{
+            "thirdparty/stb/stb_image.c",
             // "thirdparty/RGFW/RGFW.c",    // Slow building on LLVM, prefer to linking static library. However if linking fails, just uncomment line so zig will build file itself.
         },
     });

@@ -25,3 +25,4 @@ fn draw_rect(screen_buffer: ImageBuffer, x: usize, y: usize, width: usize, heigh
 
 ## Credits:
 - [RGFW](https://github.com/ColleagueRiley/RGFW)
+- [stb_image](https://github.com/nothings/stb)

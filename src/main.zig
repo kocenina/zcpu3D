@@ -45,6 +45,20 @@ const VP = struct {
 };
 
 pub fn main() !void {
+    // const s1 = "";
+    // const s2 = "1";
+    // const s3 = "1/2";
+    // const s4 = "1/2/3";
+    // const s5 = "1//3";
+    // std.debug.print("{any}\n", .{model.parse_face_item(s1)});
+    // std.debug.print("{any}\n", .{model.parse_face_item(s2)});
+    // std.debug.print("{any}\n", .{model.parse_face_item(s3)});
+    // std.debug.print("{any}\n", .{model.parse_face_item(s4)});
+    // std.debug.print("{any}\n", .{model.parse_face_item(s5)});
+
+    if (false)
+        return;
+
     var gpa = std.heap.GeneralPurposeAllocator(.{ .verbose_log = false }){};
     defer {
         const deinit_status = gpa.deinit();
@@ -84,7 +98,7 @@ pub fn main() !void {
     // var monkey_mesh = model.Model.load(allocator, "assets/monkey.obj");
     // defer monkey_mesh.deinit();
 
-    var truck_mesh = model.Model.load(allocator, "assets/kenny/firetruck.obj");
+    var truck_mesh = model.Model.load(allocator, "assets/kenny/firetruck");
     defer truck_mesh.deinit();
 
     var camera = Camera.init();
@@ -190,9 +204,9 @@ fn draw_entity(screen_buffer: render.ImageBuffer, mesh: *const model.Model, tran
     }
 
     for (0..mesh.faces.len / 3) |ind| {
-        const v1 = translated_verices[mesh.faces[ind * 3]];
-        const v2 = translated_verices[mesh.faces[ind * 3 + 1]];
-        const v3 = translated_verices[mesh.faces[ind * 3 + 2]];
+        const v1 = translated_verices[mesh.faces[ind * 3].vertex];
+        const v2 = translated_verices[mesh.faces[ind * 3 + 1].vertex];
+        const v3 = translated_verices[mesh.faces[ind * 3 + 2].vertex];
 
         const p1 = render.point_to_screen(render.point_3d_to_2d(v1), screen_buffer);
         const p2 = render.point_to_screen(render.point_3d_to_2d(v2), screen_buffer);
