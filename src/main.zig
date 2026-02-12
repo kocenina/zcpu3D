@@ -18,11 +18,11 @@ const c = @import("cimport.zig").c;
 const render = @import("render.zig");
 const Color = render.Color;
 
-const RENDER_HEIGHT = 1080 / 1;
+const RENDER_HEIGHT = 1080 / 2;
 const RENDER_WIDTH = RENDER_HEIGHT;
 
 // Rendering at 0.5 resolution scale
-const ENABLE_SCALING = false;
+const ENABLE_SCALING = true;
 const TARGET_HEIGHT = if (ENABLE_SCALING) RENDER_HEIGHT * 2 else RENDER_HEIGHT;
 const TARGET_WIDTH = if (ENABLE_SCALING) RENDER_WIDTH * 2 else RENDER_WIDTH;
 
@@ -257,7 +257,11 @@ fn draw_entity(screen_buffer: render.ImageBuffer, mesh: *const model.Model, tran
             const ip2 = p2.to_ivec();
             const ip3 = p3.to_ivec();
 
-            _ = render.draw_triangle(screen_buffer, ip1, ip2, ip3, Vec4{ v1.z, v2.z, v3.z, 0 }, zbuffer);
+            const vt1 = mesh.uvs[mesh.faces[ind * 3].uv].to_vec();
+            const vt2 = mesh.uvs[mesh.faces[ind * 3 + 1].uv].to_vec();
+            const vt3 = mesh.uvs[mesh.faces[ind * 3 + 2].uv].to_vec();
+
+            _ = render.draw_triangle(screen_buffer, ip1, ip2, ip3, Vec4{ v1.z, v2.z, v3.z, 0 }, zbuffer, vt1, vt2, vt3, &mesh.texture.?);
         }
     }
 }
@@ -265,5 +269,5 @@ fn draw_entity(screen_buffer: render.ImageBuffer, mesh: *const model.Model, tran
 fn check_fps(screen_buffer: render.ImageBuffer, refresh_rate: f32) void {
     var buffer = [_]u8{0} ** 64;
     const title = std.fmt.bufPrint(&buffer, "{}x{} ms: {d:.2}, fps: {d:.2}", .{ screen_buffer.width, screen_buffer.height, refresh_rate, 1000 / @max(refresh_rate, 0.01) }) catch @panic("smol buffer");
-    render.draw_text(screen_buffer, title, 10, 10, 4, WHITE);
+    render.draw_text(screen_buffer, title, 10, 10, 2, WHITE);
 }

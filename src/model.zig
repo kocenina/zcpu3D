@@ -12,7 +12,7 @@ const Face = struct {
     uv: u16,
 };
 
-const Texture = struct {
+pub const Texture = struct {
     data: []u8,
     width: usize,
     height: usize,
@@ -56,18 +56,16 @@ fn load_model(allocator: std.mem.Allocator, path: []const u8) Model {
 
     // mtl file path
     @memcpy(file_path[path.len..], ".mtl");
+
     const mtlfile: ?std.fs.File = std.fs.cwd().openFile(file_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => {
-            std.debug.print("no mtl\n", .{});
-            null,
-        },
+        error.FileNotFound => null,
         else => @panic(@errorName(err)),
     };
 
     var texture: ?Texture = null;
     if (mtlfile) |file| {
         defer file.close();
-        texture = read_mtl(file);
+        texture = read_mtl(file, file_path, allocator);
     }
 
     return .{ .vertices = obj_content[0], .normals = obj_content[1], .uvs = obj_content[2], .faces = obj_content[3], .texture = texture, .allocator = allocator };
@@ -130,7 +128,7 @@ fn read_obj(objfile: std.fs.File, allocator: std.mem.Allocator) struct { []math.
     return .{ vertices, normals, uvs, faces };
 }
 
-fn read_mtl(mtlfile: std.fs.File, allocator: std.mem.Allocator) ?Texture {
+fn read_mtl(mtlfile: std.fs.File, mtl_filepath: []const u8, allocator: std.mem.Allocator) ?Texture {
     var buffer = [_]u8{0} ** 1024;
     var reader = mtlfile.reader(&buffer);
 
@@ -142,10 +140,18 @@ fn read_mtl(mtlfile: std.fs.File, allocator: std.mem.Allocator) ?Texture {
 
         if (line.?.len <= texture_attr.len + 1) continue;
 
-        if (!std.mem.startsWith(u8, line, texture_attr))
+        if (!std.mem.startsWith(u8, line.?, texture_attr))
             continue;
 
-        const texture_path = line[texture_attr.len + 1 ..];
+        const texture_subpath = std.mem.trimEnd(u8, line.?[texture_attr.len + 1 ..], "\r\n");
+        const dir = std.fs.path.dirname(mtl_filepath) orelse "";
+        var texture_path = allocator.alloc(u8, dir.len + texture_subpath.len + 1) catch @panic("OOM"); // +1 for '/'
+        defer allocator.free(texture_path);
+
+        @memcpy(texture_path[0..dir.len], dir);
+        texture_path[dir.len] = '/';
+        @memcpy(texture_path[dir.len + 1 ..], texture_subpath);
+
         return load_texture(texture_path, allocator);
     }
 
@@ -156,13 +162,13 @@ fn load_texture(path: []const u8, allocator: std.mem.Allocator) ?Texture {
     var x: c_int = 0;
     var y: c_int = 0;
     var channels: c_int = 0;
-    const stbi_image = c.stbi_load(path, &x, &y, &channels, c.STBI_rgb_alpha);
+    const stbi_image = c.stbi_load(path.ptr, &x, &y, &channels, c.STBI_rgb_alpha);
     if (stbi_image == null)
         return null;
 
     defer c.stbi_image_free(stbi_image);
 
-    const texture_data = allocator.alloc(u8, x * y * channels) catch @panic("OOM");
+    const texture_data = allocator.alloc(u8, @intCast(x * y * channels)) catch @panic("OOM");
     @memcpy(texture_data, stbi_image);
     return .{ .data = texture_data, .width = @intCast(x), .height = @intCast(y), .channels = @intCast(channels) };
 }

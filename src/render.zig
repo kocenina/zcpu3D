@@ -71,7 +71,7 @@ fn define_screen_buffer(T: type) type {
     };
 }
 
-pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b: iVec2, projected_c: iVec2, original_z: Vec4, zbuffer: DepthBuffer) bool {
+pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b: iVec2, projected_c: iVec2, original_z: Vec4, zbuffer: DepthBuffer, vt_a: Vec4, vt_b: Vec4, vt_c: Vec4, texture: *const @import("model.zig").Texture) bool {
     const bb = triangle_bb(projected_a, projected_b, projected_c, @intCast(screen_buffer.width), @intCast(screen_buffer.height)) catch return false;
     const lx: usize = @intCast(bb[0]);
     const ly: usize = @intCast(bb[1]);
@@ -89,9 +89,18 @@ pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b
             if (z > zbuffer.get(x, y)) {
                 zbuffer.set(x, y, z);
 
-                const r: u32 = @intFromFloat(255.0 * (weights[0]));
-                const g: u32 = @as(u32, @intFromFloat(255.0 * (weights[1]))) << 8;
-                const b: u32 = @as(u32, @intFromFloat(255.0 * (weights[2]))) << 16;
+                // const r: u32 = @intFromFloat(255.0 * (weights[0]));
+                // const g: u32 = @as(u32, @intFromFloat(255.0 * (weights[1]))) << 8;
+                // const b: u32 = @as(u32, @intFromFloat(255.0 * (weights[2]))) << 16;
+
+                const vt = vt_a * @as(Vec4, @splat(weights[0])) + vt_b * @as(Vec4, @splat(weights[1])) + vt_c * @as(Vec4, @splat(weights[2]));
+                const tx: usize = @intFromFloat(vt[0] * @as(f32, @floatFromInt(texture.width)));
+                const ty: usize = @intFromFloat(vt[1] * @as(f32, @floatFromInt(texture.height)));
+
+                const index = ty * texture.channels * texture.width + tx * texture.channels;
+                const r: u32 = @intCast(texture.data[index + 1]);
+                const g: u32 = @as(u32, @intCast(texture.data[index] + 2)) << 8;
+                const b: u32 = @as(u32, @intCast(texture.data[index] + 3)) << 16;
 
                 const color: u32 = 0xFF000000 | r | g | b;
                 screen_buffer.set(x, y, @bitCast(color));
