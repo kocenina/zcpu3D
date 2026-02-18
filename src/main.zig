@@ -45,20 +45,6 @@ const VP = struct {
 };
 
 pub fn main() !void {
-    // const s1 = "";
-    // const s2 = "1";
-    // const s3 = "1/2";
-    // const s4 = "1/2/3";
-    // const s5 = "1//3";
-    // std.debug.print("{any}\n", .{model.parse_face_item(s1)});
-    // std.debug.print("{any}\n", .{model.parse_face_item(s2)});
-    // std.debug.print("{any}\n", .{model.parse_face_item(s3)});
-    // std.debug.print("{any}\n", .{model.parse_face_item(s4)});
-    // std.debug.print("{any}\n", .{model.parse_face_item(s5)});
-
-    if (false)
-        return;
-
     var gpa = std.heap.GeneralPurposeAllocator(.{ .verbose_log = false }){};
     defer {
         const deinit_status = gpa.deinit();
@@ -92,10 +78,10 @@ pub fn main() !void {
 
     var angle: f32 = 0;
 
-    // var teapot_mesh = model.Model.load(allocator, "assets/teapot.obj");
-    // defer teapot_mesh.deinit();
+    var teapot_mesh = model.Model.load(allocator, "assets/teapot");
+    defer teapot_mesh.deinit();
 
-    // var monkey_mesh = model.Model.load(allocator, "assets/monkey.obj");
+    // var monkey_mesh = model.Model.load(allocator, "assets/monkey");
     // defer monkey_mesh.deinit();
 
     var truck_mesh = model.Model.load(allocator, "assets/kenny/firetruck");
@@ -147,7 +133,7 @@ pub fn main() !void {
         // draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.FRONT, allocator);
 
         // transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
-        // draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, true, FaceCulling.BACK, allocator);
+        // draw_entity(render_buffer, &teapot_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
 
         transform = math.mul_mat_mul(math.translation_matrix(5, 0, 0), transform);
         draw_entity(render_buffer, &truck_mesh, math.mul_mat_mul(rotation, transform), view_proj, zbuffer, false, FaceCulling.BACK, allocator);
@@ -166,7 +152,7 @@ pub fn main() !void {
         c.RGFW_window_blitSurface(window, surface);
 
         // slow down
-        std.Thread.sleep(15_000_000);
+        //std.Thread.sleep(15_000_000);
     }
 }
 
@@ -261,7 +247,11 @@ fn draw_entity(screen_buffer: render.ImageBuffer, mesh: *const model.Model, tran
             const vt2 = mesh.uvs[mesh.faces[ind * 3 + 1].uv].to_vec();
             const vt3 = mesh.uvs[mesh.faces[ind * 3 + 2].uv].to_vec();
 
-            _ = render.draw_triangle(screen_buffer, ip1, ip2, ip3, Vec4{ v1.z, v2.z, v3.z, 0 }, zbuffer, vt1, vt2, vt3, &mesh.texture.?);
+            const vn1 = mesh.normals[mesh.faces[ind * 3].normal].to_vec();
+            const vn2 = mesh.normals[mesh.faces[ind * 3 + 1].normal].to_vec();
+            const vn3 = mesh.normals[mesh.faces[ind * 3 + 2].normal].to_vec();
+
+            _ = render.draw_triangle(screen_buffer, ip1, ip2, ip3, v1.to_vec(), v2.to_vec(), v3.to_vec(), zbuffer, vt1, vt2, vt3, &mesh.texture.?, vn1, vn2, vn3);
         }
     }
 }

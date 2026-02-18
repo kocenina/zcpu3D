@@ -10,12 +10,19 @@ pub const Error = error{
     CannotCreateBoundingBox,
 };
 
+// TODO think about using vectors
 // RGFW_formatBGRA8
 pub const Color = packed struct {
     b: u8,
     g: u8,
     r: u8,
     a: u8 = 255,
+
+    pub fn mix(self: *Color, intensity: f32) void {
+        self.b = @intFromFloat(@as(f32, @floatFromInt(self.b)) * intensity);
+        self.g = @intFromFloat(@as(f32, @floatFromInt(self.g)) * intensity);
+        self.r = @intFromFloat(@as(f32, @floatFromInt(self.r)) * intensity);
+    }
 };
 
 pub const ImageBuffer = define_screen_buffer(Color);
@@ -71,7 +78,7 @@ fn define_screen_buffer(T: type) type {
     };
 }
 
-pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b: iVec2, projected_c: iVec2, original_z: Vec4, zbuffer: DepthBuffer, vt_a: Vec4, vt_b: Vec4, vt_c: Vec4, texture: *const @import("model.zig").Texture) bool {
+pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b: iVec2, projected_c: iVec2, v_a: Vec4, v_b: Vec4, v_c: Vec4, zbuffer: DepthBuffer, vt_a: Vec4, vt_b: Vec4, vt_c: Vec4, texture: *const @import("model.zig").Texture, vn_a: Vec4, vn_b: Vec4, vn_c: Vec4) bool {
     const bb = triangle_bb(projected_a, projected_b, projected_c, @intCast(screen_buffer.width), @intCast(screen_buffer.height)) catch return false;
     const lx: usize = @intCast(bb[0]);
     const ly: usize = @intCast(bb[1]);
@@ -85,7 +92,7 @@ pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b
 
             const weights = res[1];
 
-            const z = 1 / math.dot3(weights, original_z);
+            const z = 1 / math.dot3(weights, Vec4{ v_a[2], v_b[2], v_c[2], 0.0 });
             if (z > zbuffer.get(x, y)) {
                 zbuffer.set(x, y, z);
 
@@ -93,16 +100,34 @@ pub fn draw_triangle(screen_buffer: ImageBuffer, projected_a: iVec2, projected_b
                 // const g: u32 = @as(u32, @intFromFloat(255.0 * (weights[1]))) << 8;
                 // const b: u32 = @as(u32, @intFromFloat(255.0 * (weights[2]))) << 16;
 
+                const v = v_a * @as(Vec4, @splat(weights[0])) + v_b * @as(Vec4, @splat(weights[1])) + v_c * @as(Vec4, @splat(weights[2]));
+
+                const light_position = comptime Vec4{ 50, 50, 50, 0 };
+                const light_direction = math.normalize4(light_position - v);
+                var vn = vn_a * @as(Vec4, @splat(weights[0])) + vn_b * @as(Vec4, @splat(weights[1])) + vn_c * @as(Vec4, @splat(weights[2]));
+                vn = math.normalize4(vn);
+
+                var diff = math.dot3(vn, light_direction);
+                diff = @max(diff, 0.2);
+
                 const vt = vt_a * @as(Vec4, @splat(weights[0])) + vt_b * @as(Vec4, @splat(weights[1])) + vt_c * @as(Vec4, @splat(weights[2]));
                 const tx: usize = @intFromFloat(vt[0] * @as(f32, @floatFromInt(texture.width)));
-                const ty: usize = @intFromFloat(vt[1] * @as(f32, @floatFromInt(texture.height)));
+                const ty: usize = @intFromFloat((1 - vt[1]) * @as(f32, @floatFromInt(texture.height)));
 
-                const index = ty * texture.channels * texture.width + tx * texture.channels;
-                const r: u32 = @intCast(texture.data[index + 1]);
-                const g: u32 = @as(u32, @intCast(texture.data[index] + 2)) << 8;
-                const b: u32 = @as(u32, @intCast(texture.data[index] + 3)) << 16;
+                const index = (ty) * texture.channels * texture.width + tx * texture.channels;
+                const o0 = texture.data[index + 0];
+                const o1 = texture.data[index + 1];
+                const o2 = texture.data[index + 2];
 
-                const color: u32 = 0xFF000000 | r | g | b;
+                // const r: u32 = @intCast(o0);
+                // const g: u32 = @as(u32, @intCast(o1)) << 8;
+                // const b: u32 = @as(u32, @intCast(o2)) << 16;
+                // var color: u32 = r | g | b;
+                // color = @intFromFloat(@as(f32, @floatFromInt(color)) * diff);
+                // color = color | 0xFF000000;
+
+                var color = Color{ .r = o0, .g = o1, .b = o2 };
+                color.mix(diff);
                 screen_buffer.set(x, y, @bitCast(color));
             }
         }

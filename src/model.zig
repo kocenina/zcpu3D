@@ -38,6 +38,8 @@ pub const Model = struct {
         self.allocator.free(self.normals);
         self.allocator.free(self.uvs);
         self.allocator.free(self.faces);
+        if (self.texture != null)
+            self.allocator.free(self.texture.?.data);
     }
 };
 
@@ -162,13 +164,19 @@ fn load_texture(path: []const u8, allocator: std.mem.Allocator) ?Texture {
     var x: c_int = 0;
     var y: c_int = 0;
     var channels: c_int = 0;
-    const stbi_image = c.stbi_load(path.ptr, &x, &y, &channels, c.STBI_rgb_alpha);
+    const desired_channels = c.STBI_rgb_alpha;
+    const stbi_image = c.stbi_load(path.ptr, &x, &y, &channels, desired_channels);
     if (stbi_image == null)
         return null;
 
     defer c.stbi_image_free(stbi_image);
 
-    const texture_data = allocator.alloc(u8, @intCast(x * y * channels)) catch @panic("OOM");
+    if (channels != desired_channels) {
+        std.log.warn("channels {} != desired_channels {}, texture: {s}", .{ channels, desired_channels, path });
+        channels = desired_channels;
+    }
+
+    const texture_data = allocator.alloc(u8, @intCast(x * y * 4)) catch @panic("OOM");
     @memcpy(texture_data, stbi_image);
     return .{ .data = texture_data, .width = @intCast(x), .height = @intCast(y), .channels = @intCast(channels) };
 }
@@ -186,8 +194,11 @@ fn parse_vertex(line: []u8) math.Point3 {
 fn parse_uv(line: []u8) math.Point2 {
     var splits = std.mem.splitAny(u8, line, " ");
     _ = splits.first(); // vt
-    const x = std.fmt.parseFloat(f32, splits.next() orelse "0.0") catch 0.0;
-    const y = std.fmt.parseFloat(f32, splits.next() orelse "0.0") catch 0.0;
+    const u = splits.next() orelse "0.0";
+    var v = splits.next() orelse "0.0";
+    v = std.mem.trimEnd(u8, v, "\r\n");
+    const x = std.fmt.parseFloat(f32, u) catch 0.0;
+    const y = std.fmt.parseFloat(f32, v) catch 0.0;
 
     return math.Point2.init(x, y);
 }

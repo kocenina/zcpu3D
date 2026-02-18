@@ -23,6 +23,10 @@ pub const Point3 = struct {
     pub fn init(x: f32, y: f32, z: f32) Point3 {
         return .{ .x = x, .y = y, .z = z };
     }
+
+    pub fn to_vec(self: *const Point3) Vec4 {
+        return .{ self.x, self.y, self.z, 0 };
+    }
 };
 
 pub const iVec2 = @Vector(2, i32);
